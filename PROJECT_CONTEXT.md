@@ -21,4 +21,14 @@ Remaining-focused menu/widget, reset formatting, ChatGPT auth fixes and vanished
 | Installation/recovery | `install.sh`, `aiquotaleft-doctor.sh`, `restart_aiquotaleft.sh` |
 | Historical growth strategy | `docs/AGENT_GUIDANCE_HISTORY.md`, `docs/planning/`; opt in for distribution tasks only |
 
-Next useful delivery: a reproducible clean-install + sleep/wake + icon recovery + widget matrix. Keep this fork's reliability goal ahead of inherited star-chasing tasks unless the owner requests distribution work. Never interpret stale percentage data as current quota.
+## Next steps (written 2026-09-21)
+
+Checked 2026-09-21: 45 tests pass; `89fdcf7` is pushed and is the installed copy in `~/.ai-quota-bar`; the menu bar app was restarted after that commit; the widget binaries were rebuilt with the 2026-09-20 changes. The features are done. What is missing is a recorded check that the app holds up in daily use. Only the owner can do it, in about 15 minutes:
+
+1. YOU: Close the lid for at least 10 minutes, then open it and click the menu bar icon. The `Updated` time should become recent within about a minute.
+2. YOU: In Terminal, run `pkill -f '.ai-quota-bar/claude_bar.py'`. The icon should come back by itself within about 10 seconds (launchd `KeepAlive`). If it does not, run `bash ~/.ai-quota-bar/aiquotaleft-doctor.sh`.
+3. YOU: Remove the widget and add it again. It should show the same numbers as the menu bar.
+4. YOU, when it happens naturally: after a Claude or ChatGPT login expires, the app should ask you to sign in rather than keep showing old numbers.
+5. YOU, only if other people will install it: run the README install from a second macOS user account.
+
+Agent, afterwards: add one dated line here with what passed or failed, fix any failure with a regression test, and commit. Keep this fork's reliability goal ahead of inherited star-chasing tasks unless the owner asks for distribution work. Never interpret stale percentage data as current quota.
