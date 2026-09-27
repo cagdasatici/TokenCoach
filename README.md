@@ -124,6 +124,43 @@ cd AIQuotaBarWidget && ./build_widget.sh
 
 ---
 
+## Where did it go? Usage ledger
+
+AIQuotaLeft also reads the transcripts that **Claude Code, Cowork and Codex** already
+write on your Mac and keeps a local ledger of every prompt: tokens, model, project,
+API-equivalent cost and how much quota it used. Nothing leaves your machine.
+
+- **Menu / panel:** today's spend, top project and most expensive prompt.
+- **Open Usage Report…** — a static HTML dashboard: spend per day, by tool, project
+  and model, and your 50 most expensive prompts (click one to read it in full).
+- **Analyze My Usage…** — on demand only. Sends a digest of your costliest prompts to
+  your own `claude` CLI (Sonnet) and opens concrete advice: habit changes, cheaper model
+  fits and prompt rewrites. It uses a little of your Claude quota each time, and the
+  next run checks whether the previous advice was followed.
+- **Import Chat Export…** — claude.ai and ChatGPT web chats are not stored locally;
+  import their data export to include them. Their token counts are **estimates**
+  (text length only; system prompts, files and hidden reasoning are not in exports).
+
+What the numbers mean:
+
+| | Claude Code / Cowork | Codex | Web chat imports |
+|---|---|---|---|
+| Tokens per prompt | exact, from logs | exact, from logs | estimated |
+| API-equivalent $ | list price | add prices yourself¹ | — |
+| Quota used per prompt | estimated from this app's quota readings | from Codex's reading after each response | — |
+
+¹ OpenAI prices for the Codex models are not bundled. Add them to
+`~/.claude_bar_config.json` as `"ledger_prices": {"gpt-6-astra": {"in": 0, "out": 0, "read": 0}}`
+(USD per million tokens). Add `"ledger_plans": {"claude": 200}` to see what your plan
+is worth against API prices.
+
+"API-equivalent $" is what the same tokens would cost on the provider's API. On a
+subscription you pay a flat fee, so treat it as a yardstick, not a bill.
+
+From a terminal: `python3 claude_bar.py --ledger | --report | --optimize | --import-export FILE`.
+
+---
+
 ## Why not just check the settings page?
 
 | | AIQuotaBar | Open settings page | Browser extension |
@@ -226,6 +263,9 @@ aren't specific to the changes below belong upstream.
   compile to `Optional.none` and leave the widget blank.
 - `build_widget.sh` drops the build-directory copy from LaunchServices, so the system
   can't host the widget from a stale build instead of `/Applications`.
+- Usage ledger: per-prompt tokens, API-equivalent cost and quota from local Claude Code,
+  Cowork and Codex logs, an HTML usage report, on-demand usage advice, and chat-export
+  import.
 
 ## License
 

@@ -35,6 +35,7 @@ from aiquotabar.history import (
 )
 from aiquotabar.widget import _write_widget_cache, _is_widget_installed
 from aiquotabar.update import _check_and_apply_update, _restart_app
+from aiquotabar import ledger as _ledger
 
 
 # -- Brand icon helpers --------------------------------------------------------
@@ -1052,6 +1053,45 @@ def _ask_text(title: str, prompt: str, default: str = "") -> str | None:
     return None
 
 
+def _choose_file(prompt: str) -> str | None:
+    """Native file picker via AppleScript; returns a POSIX path or None."""
+    script = (
+        f'POSIX path of (choose file with prompt "{prompt}" '
+        'of type {"zip", "json", "public.zip-archive", "public.json"})'
+    )
+    try:
+        result = subprocess.run(["osascript", "-e", script],
+                                capture_output=True, text=True, timeout=300)
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        log.exception("_choose_file failed")
+    return None
+
+
+def _ledger_menu_lines(summary: dict | None, status: str) -> list[str]:
+    """Display lines for the menu's spend section (pure, testable)."""
+    if summary is None:
+        return ["  " + (status or "Indexing local logs\u2026")]
+    lines = [
+        f"  Today  {_ledger.fmt_usd(summary['cost'])}"
+        f"  \u00b7  {summary['prompts']} prompts"
+        f"  \u00b7  {_ledger.fmt_tokens(summary['tokens'])} tokens"
+    ]
+    tp = summary.get("top_project")
+    if tp:
+        lines.append(f"  Top project  {tp['project']}  {_ledger.fmt_usd(tp['cost'])}")
+    top = summary.get("top_prompt")
+    if top:
+        text = " ".join(top["text"].split())
+        if len(text) > 38:
+            text = text[:37] + "\u2026"
+        lines.append(f"  Top prompt  \u201c{text}\u201d  {_ledger.fmt_usd(top['cost'])}")
+    if status:
+        lines.append(f"  {status}")
+    return lines
+
+
 def _clipboard_text() -> str:
     try:
         result = subprocess.run(
@@ -1657,6 +1697,19 @@ class _UsagePanel:
             elements.append(('placeholder', y, 40))
             y += 40 + self.SECTION_GAP
 
+        # Spend today (usage ledger)
+        summary = getattr(self._app, "_ledger_summary", None)
+        if summary is not None:
+            elements.append(('provider_header', y, 18, 'Spend today', '#8E8E93',
+                             f"{_ledger.fmt_usd(summary['cost'])} API-equiv."))
+            y += 18 + 6
+            for line in _ledger_menu_lines(summary, getattr(self._app, "_ledger_status", ""))[1:]:
+                elements.append(('text_line', y, 14, line.strip()))
+                y += 14 + 2
+            elements.append(('text_line', y, 14, "Report and advice: \u2699 menu"))
+            y += 14 + 2
+            y += self.SECTION_GAP
+
         # ── Footer separator ────────────────────────────────────────────
         elements.append(('sep', y, 1))
         y += 1 + 8
@@ -1723,6 +1776,13 @@ class _UsagePanel:
                 self._render_small_text(
                     doc, PAD, real_y, inner, h,
                     spark_str,
+                    NSTextField, NSFont, NSColor, NSMakeRect,
+                )
+
+            elif kind == 'text_line':
+                _, _, _, text = elem
+                self._render_small_text(
+                    doc, PAD, real_y, inner, h, text,
                     NSTextField, NSFont, NSColor, NSMakeRect,
                 )
 
@@ -1993,6 +2053,14 @@ class ClaudeBar(rumps.App):
         self._login_item_cached: bool | None = None
         self._last_update_check = self.config.get("last_update_check", 0)
 
+        # Usage ledger (per-prompt tokens/cost from local agent logs)
+        self._ledger_conn = None
+        self._ledger_lock = threading.Lock()
+        self._ledger_busy = False
+        self._ledger_summary: dict | None = None
+        self._ledger_status = ""
+        self._optimizer_running = False
+
         if not _is_login_item():
             _add_login_item()
 
@@ -2015,6 +2083,7 @@ class ClaudeBar(rumps.App):
         # Always try to fetch on startup -- browser JS works even without saved cookies
         atexit.register(self._shutdown)
         self._schedule_fetch()
+        self._schedule_ledger()
 
     def _shutdown(self):
         """Clean up resources on exit."""
@@ -2108,6 +2177,18 @@ class ClaudeBar(rumps.App):
             if cc.get("last_date"):
                 items.append(_mi(f"  Last active  {cc['last_date']}"))
             items.append(None)
+
+        # -- Spend (usage ledger) ---------------------------------------------
+        items.append(_mi("  Spend (API-equivalent)"))
+        for line in _ledger_menu_lines(self._ledger_summary, self._ledger_status):
+            items.append(_mi(line))
+        items.append(rumps.MenuItem("Open Usage Report\u2026", callback=self._open_usage_report))
+        items.append(rumps.MenuItem(
+            "Analyzing\u2026" if self._optimizer_running else "Analyze My Usage\u2026",
+            callback=None if self._optimizer_running else self._analyze_usage,
+        ))
+        items.append(rumps.MenuItem("Import Chat Export\u2026", callback=self._import_chat_export))
+        items.append(None)
 
         # -- Other API providers ----------------------------------------------
         for pd in self._provider_data:
@@ -2434,6 +2515,106 @@ class ClaudeBar(rumps.App):
 
     def _on_timer(self, _timer):
         self._schedule_fetch()
+        self._schedule_ledger()
+
+    # -- usage ledger ----------------------------------------------------------
+
+    def _ledger(self):
+        if self._ledger_conn is None:
+            self._ledger_conn = _ledger.open_ledger()
+        return self._ledger_conn
+
+    def _schedule_ledger(self):
+        with self._ledger_lock:
+            if self._ledger_busy:
+                return
+            self._ledger_busy = True
+        threading.Thread(target=self._ledger_pass, daemon=True).start()
+
+    def _ledger_pass(self):
+        """Index new log lines, then refresh the menu's spend summary.
+        Runs off the main thread; never blocks the quota fetch."""
+        try:
+            overrides = _ledger.ledger_overrides(self.config)
+            with self._ledger_lock:
+                conn = self._ledger()
+                counts = _ledger.ingest(conn, overrides=overrides, time_budget=30)
+                self._ledger_summary = _ledger.today_summary(conn)
+            if not counts["complete"]:
+                self._ledger_status = "Still indexing older logs\u2026"
+                threading.Timer(1.0, self._schedule_ledger).start()
+            elif not self._optimizer_running:
+                self._ledger_status = ""
+        except Exception:
+            log.exception("ledger pass failed")
+            self._ledger_status = "Usage ledger unavailable (see log)"
+        finally:
+            self._ledger_busy = False
+        if self._last_data is not None:
+            self._post_data(self._last_data)
+
+    def _open_usage_report(self, _sender):
+        def work():
+            try:
+                from aiquotabar.ledger_report import write_report, open_file
+                conn = _ledger.open_ledger()   # own connection: safe across threads
+                try:
+                    path = write_report(conn, self.config)
+                finally:
+                    conn.close()
+                open_file(path)
+            except Exception:
+                log.exception("usage report failed")
+                _notify("AIQuotaLeft", "Could not build the usage report", "See ~/.claude_bar.log")
+        threading.Thread(target=work, daemon=True).start()
+
+    def _analyze_usage(self, _sender):
+        if self._optimizer_running:
+            return
+        self._optimizer_running = True
+        self._ledger_status = "Analyzing your usage with Claude\u2026"
+        if self._last_data is not None:
+            self._post_data(self._last_data)
+
+        def work():
+            try:
+                from aiquotabar.optimizer import run_optimizer
+                from aiquotabar.ledger_report import open_file
+                conn = _ledger.open_ledger()
+                try:
+                    path = run_optimizer(conn)
+                finally:
+                    conn.close()
+                open_file(path)
+                _notify("AIQuotaLeft", "Usage advice is ready", "Opened in your browser")
+            except Exception as e:
+                log.exception("optimizer failed")
+                _notify("AIQuotaLeft", "Usage analysis failed", str(e)[:200])
+            finally:
+                self._optimizer_running = False
+                self._ledger_status = ""
+                if self._last_data is not None:
+                    self._post_data(self._last_data)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _import_chat_export(self, _sender):
+        def work():
+            path = _choose_file("Choose a claude.ai or ChatGPT data export (.zip or conversations.json)")
+            if not path:
+                return
+            try:
+                from aiquotabar.chat_import import import_export
+                conn = _ledger.open_ledger()
+                try:
+                    res = import_export(conn, path)
+                finally:
+                    conn.close()
+                _notify("AIQuotaLeft", f"Imported {res['prompts']} chat prompts",
+                        f"{res['conversations']} conversations from {res['file']} (token counts estimated)")
+            except Exception as e:
+                log.exception("chat import failed")
+                _notify("AIQuotaLeft", "Chat import failed", str(e)[:200])
+        threading.Thread(target=work, daemon=True).start()
 
     def _schedule_fetch(self):
         with self._ui_lock:

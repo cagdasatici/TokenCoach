@@ -10,6 +10,10 @@ Cursor support has now been removed from the menu bar, panel, widget payload/con
 
 Remaining-focused menu/widget, reset formatting, ChatGPT auth fixes and vanished-icon recovery exist. Runtime provider/session compatibility and fresh-install/widget validation remain the key acceptance work. Growth/adoption was not measured.
 
+## Snapshot — 2026-09-27: usage ledger
+
+Added per-prompt usage tracking (design: [docs/plans/2026-09-27-usage-ledger-design.md](docs/plans/2026-09-27-usage-ledger-design.md)). `aiquotabar/ledger.py` incrementally indexes Claude Code (`~/.claude/projects`), Cowork (`local-agent-mode-sessions/**/audit.jsonl`) and Codex (`~/.codex/sessions`) logs into `~/Library/Application Support/AIQuotaBar/ledger.db`; `ledger_report.py` writes a static HTML report; `optimizer.py` runs `claude -p` on demand only; `chat_import.py` imports claude.ai/ChatGPT exports as estimates. Menu (gear/right-click) and panel show today's API-equivalent spend. Quota attribution uses a running maximum per window because parallel Codex sessions report slightly stale readings; a ≥30-point drop is a reset. OpenAI prices are deliberately not bundled. **73 tests pass** (installed Python 3.12). Checked against real logs: 34k responses indexed in ~2 s; menu and panel built headlessly. Not yet exercised: the running app after auto-update, and a real `--optimize` run.
+
 ## Read only for the relevant task
 
 | Task | Entry points / authority |
@@ -17,6 +21,7 @@ Remaining-focused menu/widget, reset formatting, ChatGPT auth fixes and vanished
 | Current product/attribution | `README.md`, especially “Changes in this fork” |
 | UI/conversion | `aiquotabar/ui.py`, `tests/test_remaining.py` |
 | Providers/reset/auth | `aiquotabar/providers.py`, `tests/test_reset_format.py`; fixtures only unless live checks requested |
+| Usage ledger / report / optimizer | `aiquotabar/ledger.py`, `ledger_report.py`, `optimizer.py`, `chat_import.py`, `tests/test_ledger.py` |
 | Widget | `AIQuotaBarWidget/`; Python source assertions do not replace an Xcode/runtime check |
 | Installation/recovery | `install.sh`, `aiquotaleft-doctor.sh`, `restart_aiquotaleft.sh` |
 | Historical growth strategy | `docs/AGENT_GUIDANCE_HISTORY.md`, `docs/planning/`; opt in for distribution tasks only |
