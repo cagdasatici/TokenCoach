@@ -51,6 +51,9 @@ def migrate_legacy_data() -> list[str]:
                     os.rename(src, dst)
                     moved.append(src)
         os.makedirs(APP_SUPPORT, exist_ok=True)
+        old_opt = os.path.join(APP_SUPPORT, "aiquotaleft-optimizer")   # Analyze's work folder
+        if os.path.isdir(old_opt) and not os.path.exists(os.path.join(APP_SUPPORT, "tokencoach-optimizer")):
+            os.rename(old_opt, os.path.join(APP_SUPPORT, "tokencoach-optimizer"))
         for src, dst in _LEGACY_FILES.items():
             if os.path.exists(src) and not os.path.exists(dst):
                 os.rename(src, dst)
