@@ -634,7 +634,13 @@ render();
 for (const id of (QS.get('hide') || '').split(',').filter(Boolean)) { const el = document.getElementById(id); if (el) el.style.display = 'none'; }
 const age = Math.round((Date.now() / 1000 - D.generated) / 60);
 $('#updated').textContent = D.demo ? 'sample data' : `updated ${when(D.generated)}` + (!D.live && age > 20 ? ` · ${age} min ago` : '') + (D.live ? '' : ' · read-only copy');
-let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(render, 150); });
+// On resize redraw only the charts, so an open lesson editor or rewrite survives.
+function redrawCharts() {
+  const [lo, hi] = rangeBounds(S.range), rows = filtered(lo, hi);
+  timeline(rows, lo, hi);
+  if (S.adv) { quotaChart(lo, hi); heatmap(rows); }
+}
+let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(redrawCharts, 150); });
 // Pick up fresh data every 5 minutes (state persists), unless the person is mid-action.
 setInterval(() => { if (!document.querySelector('button[disabled]') && !document.querySelector('.improve')) location.reload(); }, 5 * 60 * 1000);
 """
