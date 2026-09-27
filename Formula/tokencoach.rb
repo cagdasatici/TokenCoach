@@ -48,6 +48,9 @@ class Tokencoach < Formula
 
       The optional desktop widget needs Xcode; use the one-line installer
       from the README if you want it.
+
+      Before `brew uninstall tokencoach`, run `tokencoach --cleanup` to remove
+      its login item and Claude Code hook.
     EOS
   end
 

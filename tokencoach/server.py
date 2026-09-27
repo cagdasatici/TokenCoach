@@ -41,6 +41,9 @@ class _Handler(BaseHTTPRequestHandler):
         port = self.server.server_address[1]
         return self.headers.get("Host", "") in (f"127.0.0.1:{port}", f"localhost:{port}")
 
+    def _token_ok(self, given: str | None) -> bool:
+        return secrets.compare_digest((given or "").encode(), self.server.token.encode())
+
     def _send(self, code: int, body: bytes, ctype: str):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
@@ -61,7 +64,7 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send(403, b"Forbidden", "text/plain")
         if url.path != "/":
             return self._send(404, b"Not found", "text/plain")
-        if parse_qs(url.query).get("t", [""])[0] != self.server.token:
+        if not self._token_ok(parse_qs(url.query).get("t", [""])[0]):
             return self._send(403, b"Open the dashboard from the TokenCoach menu bar icon.", "text/plain")
         try:
             from tokencoach.ledger_report import build_report
@@ -77,11 +80,13 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         url = urlparse(self.path)
-        if not self._host_ok() or self.headers.get(TOKEN_HEADER) != self.server.token:
+        if not self._host_ok() or not self._token_ok(self.headers.get(TOKEN_HEADER)):
             return self._json(403, {"ok": False, "error": "Forbidden"})
         try:
             n = int(self.headers.get("Content-Length") or 0)
-            body = json.loads(self.rfile.read(min(n, 1_000_000)) or b"{}")
+            if not 0 <= n <= 1_000_000:
+                raise ValueError("bad Content-Length")
+            body = json.loads(self.rfile.read(n) or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self._json(400, {"ok": False, "error": "Bad request"})
         action = url.path.removeprefix("/api/")
@@ -171,7 +176,8 @@ def _nudges(conn, body, app):
     return {"on": nudge.is_installed()}
 
 
-# Actions that would spend quota or change the person's real setup.
+# Actions that would spend quota or change the person's real setup. Improve is
+# allowed: cached sample rewrites show, and run_claude refuses a real run.
 DEMO_BLOCKED = {"analyze", "nudges"}
 
 ACTIONS = {

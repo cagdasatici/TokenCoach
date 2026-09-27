@@ -273,14 +273,22 @@ SOURCE_PROVIDER = {
 }
 
 
-def open_ledger(path: str = LEDGER_DB) -> sqlite3.Connection:
+# Bump whenever SCHEMA or _migrate changes, so existing ledgers pick it up.
+SCHEMA_VERSION = 1
+
+
+def open_ledger(path: str = LEDGER_DB, timeout: float = 30) -> sqlite3.Connection:
+    """Open the ledger. Schema set-up and migrations run once per SCHEMA_VERSION,
+    not on every open: the nudge hook opens it before each prompt."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    conn = sqlite3.connect(path, check_same_thread=False, timeout=30)
+    conn = sqlite3.connect(path, check_same_thread=False, timeout=timeout)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.executescript(SCHEMA)
-    _migrate(conn)
-    conn.commit()
+    if conn.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
+        conn.executescript(SCHEMA)
+        _migrate(conn)
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        conn.commit()
     return conn
 
 

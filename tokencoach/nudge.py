@@ -259,7 +259,7 @@ def main():
         if level == "off":
             return
         event = json.loads(sys.stdin.read() or "{}")
-        conn = ledger.open_ledger()
+        conn = ledger.open_ledger(timeout=2)       # never hold up the prompt for a busy ledger
         try:
             msgs = decide(event, conn, level)
             if not msgs:
@@ -315,10 +315,13 @@ def is_installed(path: str = CLAUDE_SETTINGS) -> bool:
 
 
 def install(install_dir: str, path: str = CLAUDE_SETTINGS) -> None:
-    """Add our hook, keeping every other setting. Writes a backup first."""
+    """Add our hook, keeping every other setting. The first time, backs up
+    the settings file as it was before TokenCoach."""
     settings = _load_settings(path)
-    if os.path.exists(path):
-        with open(path) as f, open(path + ".tokencoach-backup", "w") as b:
+    backup = path + ".tokencoach-backup"
+    if os.path.exists(path) and not os.path.exists(backup):
+        # Keep the first backup: it holds the settings from before TokenCoach.
+        with open(path) as f, open(backup, "w") as b:
             b.write(f.read())
     hooks = settings.setdefault("hooks", {})
     entries = [e for e in hooks.get("UserPromptSubmit") or []

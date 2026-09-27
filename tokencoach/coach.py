@@ -30,6 +30,7 @@ from tokencoach.nudge import BROAD, SPECIFIC
 READY = 0.95
 REVIEW = 0.70
 DETECT_DAYS = 30
+MAX_RULE_CHARS = 600
 BACKUP_DIR = os.path.join(os.path.dirname(ledger.LEDGER_DB), "backups")
 def _global_files() -> dict:
     from tokencoach.config import DEMO, APP_SUPPORT
@@ -223,7 +224,7 @@ def record_analysis_lessons(conn, lessons: list[dict], scopes: dict[int, dict]) 
     known_projects = {s["project"] for s in scopes.values()}
     count = 0
     for l in lessons:
-        rule = (l.get("rule") or "").strip()
+        rule = " ".join(str(l.get("rule") or "").split())[:MAX_RULE_CHARS]   # one line: it becomes a bullet
         if not rule:
             continue
         cited = [scopes[i] for i in l.get("evidence_prompts") or [] if isinstance(i, int) and i in scopes]
@@ -283,7 +284,9 @@ def target_files(conn, lesson: dict) -> list[str]:
 
 def render_block(rules: list[tuple[str, str]]) -> str:
     lines = [BLOCK_START, f"## Lessons from your usage ({APP_NAME})", ""]
-    lines += [f"- {rule} <!-- {lid} -->" for lid, rule in rules]
+    # One line per rule, and no comment markers, so a rule can never end the block early.
+    clean = lambda r: " ".join(r.split()).replace("<!--", "<!-").replace("-->", "->")
+    lines += [f"- {clean(rule)} <!-- {lid} -->" for lid, rule in rules]
     lines.append(BLOCK_END)
     return "\n".join(lines)
 
@@ -307,7 +310,9 @@ def write_block(path: str, rules: list[tuple[str, str]]) -> None:
         body = (body + "\n\n" if body else "") + render_block(rules) + "\n"
     elif body:
         body += "\n"
-    if not body and not os.path.exists(path):
+    if not body:
+        if BLOCK_START in existing:
+            os.remove(path)        # it held only our block; the backup above keeps it
         return
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + f".{APP_NAME.lower()}.tmp"
@@ -355,8 +360,6 @@ def unapply_lesson(conn, lesson_id: str) -> None:
         write_block(path, _rules_for_file(conn, path))
     conn.commit()
 
-
-MAX_RULE_CHARS = 600
 
 
 def edit_lesson(conn, lesson_id: str, title: str | None = None, rule: str | None = None,
@@ -475,14 +478,12 @@ def nudge_summary(conn, days: int = 30) -> dict:
     since = time.time() - days * 86400
     kinds = {r["kind"]: r["n"] for r in conn.execute(
         "SELECT kind, COUNT(*) n FROM nudges WHERE ts >= ? GROUP BY kind", (since,))}
-    ctx = conn.execute("SELECT session_id, ts FROM nudges WHERE kind = 'context' AND ts >= ?",
-                       (since,)).fetchall()
-    followed = 0
-    for r in ctx:
-        later = conn.execute("SELECT COUNT(*) FROM prompts WHERE session_id = ? AND ts > ?",
-                             (r["session_id"], r["ts"] + 1)).fetchone()[0]
-        followed += later <= 1
-    return {"by_kind": kinds, "context_total": len(ctx), "context_followed": followed}
+    row = conn.execute(
+        """SELECT COUNT(*) total,
+                  COALESCE(SUM((SELECT COUNT(*) FROM prompts p
+                                WHERE p.session_id = n.session_id AND p.ts > n.ts + 1) <= 1), 0) followed
+           FROM nudges n WHERE n.kind = 'context' AND n.ts >= ?""", (since,)).fetchone()
+    return {"by_kind": kinds, "context_total": row["total"], "context_followed": row["followed"]}
 
 
 # ── improve one prompt ─────────────────────────────────────────────────────

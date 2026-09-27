@@ -186,3 +186,67 @@ class Backups(unittest.TestCase):
             saved = sorted(pathlib.Path(d, "b").iterdir())
             self.assertEqual(len(saved), 2)
             self.assertIn("original", saved[0].read_text() + saved[1].read_text())
+
+
+class DemoNeverRunsClaude(unittest.TestCase):
+    def test_run_claude_refuses_in_demo(self):
+        from tokencoach import optimizer
+        with patch.dict(os.environ, {"TOKENCOACH_DEMO": "1"}), \
+                patch.object(optimizer, "find_claude_cli", return_value="/bin/echo"), \
+                patch.object(optimizer.subprocess, "run") as run:
+            with self.assertRaises(RuntimeError):
+                optimizer.run_claude("hi")
+        run.assert_not_called()
+
+
+class AutoUpdate(unittest.TestCase):
+    def git(self, cwd, *args):
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd,
+                              capture_output=True, text=True, check=True).stdout.strip()
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = pathlib.Path(self.tmp.name)
+        self.origin, self.clone = root / "origin", root / "clone"
+        self.origin.mkdir()
+        self.git(self.origin, "init", "-q", "-b", "main")
+        (self.origin / "a.txt").write_text("1\n")
+        self.git(self.origin, "add", ".")
+        self.git(self.origin, "commit", "-qm", "one")
+        self.git(root, "clone", "-q", str(self.origin), str(self.clone))
+        (self.origin / "a.txt").write_text("2\n")
+        self.git(self.origin, "commit", "-qam", "two")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_clean_main_checkout_updates(self):
+        from tokencoach.update import _check_and_apply_update
+        self.assertTrue(_check_and_apply_update(str(self.clone)))
+        self.assertEqual((self.clone / "a.txt").read_text(), "2\n")
+
+    def test_local_edits_and_branches_are_left_alone(self):
+        from tokencoach.update import _check_and_apply_update
+        (self.clone / "a.txt").write_text("my edit\n")
+        self.assertFalse(_check_and_apply_update(str(self.clone)))
+        self.assertEqual((self.clone / "a.txt").read_text(), "my edit\n")
+        self.assertEqual(self.git(self.clone, "stash", "list"), "")
+        self.git(self.clone, "checkout", "-q", "--", "a.txt")
+        self.git(self.clone, "checkout", "-qb", "feature")
+        self.assertFalse(_check_and_apply_update(str(self.clone)))
+
+
+class Cleanup(unittest.TestCase):
+    def test_removes_hook_and_login_item_only(self):
+        from tokencoach import __main__ as cli, config, nudge
+        with tempfile.TemporaryDirectory() as d:
+            plist = pathlib.Path(d, "agent.plist")
+            plist.write_text("<plist/>")
+            with patch.object(config, "LAUNCH_AGENT_PLIST", str(plist)), \
+                    patch.object(nudge, "is_installed", return_value=True), \
+                    patch.object(nudge, "uninstall") as unhook, \
+                    patch("subprocess.run") as run, patch("builtins.print"):
+                cli._cleanup()
+            unhook.assert_called_once()
+            self.assertIn("bootout", run.call_args[0][0])
+            self.assertFalse(plist.exists())

@@ -7,9 +7,9 @@ import sys
 from tokencoach.config import log
 
 
-def _check_and_apply_update() -> bool:
+def _check_and_apply_update(install_dir: str | None = None) -> bool:
     """Silently check for updates via git and apply if available. Returns True if updated."""
-    install_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    install_dir = install_dir or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if not os.path.isdir(os.path.join(install_dir, ".git")):
         return False  # Not a git install (Homebrew, dev, etc.)
     try:
@@ -23,7 +23,14 @@ def _check_and_apply_update() -> bool:
         remote = run(["git", "rev-parse", "origin/main"]).stdout.strip()
         if local == remote:
             return False  # Already up to date
-        run(["git", "stash", "--quiet"])
+        # Only move a clean checkout of main that is simply behind. Anything
+        # else is someone's working copy: leave their branch and edits alone.
+        branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+        dirty = run(["git", "status", "--porcelain", "--untracked-files=no"]).stdout.strip()
+        behind = run(["git", "merge-base", "--is-ancestor", "HEAD", "origin/main"]).returncode == 0
+        if branch != "main" or dirty or not behind:
+            log.info("auto-update skipped: local changes or not a plain main checkout")
+            return False
         r = run(["git", "merge", "--ff-only", "origin/main", "--quiet"])
         if r.returncode != 0:
             log.warning("auto-update merge failed: %s", r.stderr)

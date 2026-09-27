@@ -13,6 +13,8 @@ USAGE = """usage: tokencoach [option]
   --import-export PATH   import a claude.ai or ChatGPT data export (estimated tokens)
   --demo                 open the dashboard with sample data (reads and changes nothing of yours)
   --screenshots DIR      write the README screenshots from sample data (needs Google Chrome)
+  --cleanup              before `brew uninstall`: stop the app, remove its login item and the
+                         Claude Code hook (your data and applied lessons stay)
 """
 
 
@@ -88,6 +90,24 @@ def _ledger_cli(cmd: str, args: list[str]):
               f"{res['conversations']} {res['source']} conversations (estimated tokens)")
 
 
+def _cleanup():
+    """Undo what the app set up outside its own folder, for installs without
+    uninstall.sh (Homebrew). Data and applied lessons are left alone."""
+    import os
+    import subprocess
+    from tokencoach import nudge
+    from tokencoach.config import LAUNCH_AGENT_LABEL, LAUNCH_AGENT_PLIST
+    if nudge.is_installed():
+        nudge.uninstall()
+        print("Removed the Claude Code nudge hook (settings backup kept)")
+    subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"], capture_output=True)
+    if os.path.exists(LAUNCH_AGENT_PLIST):
+        os.remove(LAUNCH_AGENT_PLIST)
+        print("Stopped TokenCoach and removed its login item")
+    print("Data kept in ~/Library/Application Support/TokenCoach. Lessons you applied stay in your "
+          "CLAUDE.md / AGENTS.md files; remove them from the dashboard first if you want them gone.")
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else None
     if cmd in ("--history", "-H"):
@@ -99,6 +119,8 @@ def main():
         _demo()
     elif cmd == "--screenshots":
         _demo(shots_dir=sys.argv[2] if len(sys.argv) > 2 else "assets")
+    elif cmd == "--cleanup":
+        _cleanup()
     elif cmd in ("--help", "-h"):
         print(USAGE)
     else:

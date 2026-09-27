@@ -110,6 +110,8 @@ a claude.ai or chatgpt.com login in your browser for the quota-left bars. The de
 needs Xcode (the installer builds it when Xcode is present).
 
 **Uninstall:** `bash ~/.tokencoach/uninstall.sh` (add `--purge` to delete your data too).
+With Homebrew: `tokencoach --cleanup && brew uninstall tokencoach` (the first step removes the
+login item and the Claude Code hook, which Homebrew can't).
 
 **Upgrading from AIQuotaBar or AIQuotaLeft:** run the one-line installer above. It stops the
 old launch agents, watchdog and widget, moves your settings and quota history into TokenCoach,
@@ -169,7 +171,7 @@ like its closest published sibling and labelled *estimated*. Override anything i
 - **Dashboard buttons do nothing:** open it from the menu bar icon; a saved copy is read-only.
 - **Command line:** `tokencoach --help` with Homebrew, otherwise
   `~/.tokencoach/.venv/bin/python ~/.tokencoach/tokencoach.py --help` (`--ledger`, `--dashboard`,
-  `--optimize`, `--import-export FILE`, `--demo`).
+  `--optimize`, `--import-export FILE`, `--demo`, `--cleanup`).
 
 ## Credits
 

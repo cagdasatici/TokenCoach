@@ -2,13 +2,13 @@
 
 A navigation snapshot, not a replacement for requirements or live evidence. Update it after a meaningful milestone.
 
-## Snapshot — 2026-09-27: v1.0.1 released; `main` has fixes since (demo sandbox, scripts, doctor, dashboard resize)
+## Snapshot — 2026-09-27: v1.0.2
 
 - **Product:** macOS menu bar app. Quota left for Claude and ChatGPT (from AIQuotaBar), plus a per-prompt ledger of Claude Code, Cowork and Codex usage, a local dashboard (simple view + Advanced), Claude Code nudges, lessons written into CLAUDE.md / AGENTS.md with before/after, Improve, templates, chat-export import and a sample-data demo.
 - **Pricing:** Anthropic and OpenAI list prices in `tokencoach/ledger.py` (checked 2026-09-27; OpenAI long-context rates above 272K). Unpublished models use a labelled sibling price. User overrides: `ledger_prices`, `ledger_model_equivalents`.
 - **Layout:** install `~/.tokencoach`; data `~/Library/Application Support/TokenCoach`; logs `~/Library/Logs/TokenCoach`; LaunchAgents `io.github.cagdasatici.tokencoach{,.doctor,.widgethost}`; widget `/Applications/TokenCoachWidget.app`. Pre-rename installs are moved by `install.sh` (started automatically by `tokencoach/legacy.py` after their next auto-update); data folders move on first import of `tokencoach.config`.
-- **Distribution:** one-line `install.sh`, Homebrew formula `Formula/tokencoach.rb` (tap = this repo), `uninstall.sh`.
-- **Checks:** unit tests in `tests/`; an isolated `install.sh` run (`TOKENCOACH_NO_LAUNCH=1`); a Homebrew build from a local tap; the widget builds with Xcode.
+- **Distribution:** one-line `install.sh`, Homebrew formula `Formula/tokencoach.rb` (tap = this repo), `uninstall.sh`; Homebrew users run `tokencoach --cleanup` before `brew uninstall`. Auto-update (git installs) only fast-forwards a clean `main` checkout. Release: tag, attach `git archive` tarball as `TokenCoach-X.Y.Z.tar.gz`, then point the formula at it.
+- **Checks:** unit tests in `tests/`; `ledger.SCHEMA_VERSION` must be bumped when the schema or `_migrate` changes; an isolated `install.sh` run (`TOKENCOACH_NO_LAUNCH=1`); a Homebrew build from a local tap; the widget builds with Xcode.
 
 ## Where things are
 

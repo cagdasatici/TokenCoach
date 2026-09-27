@@ -141,6 +141,10 @@ def latest_report() -> str | None:
 def run_claude(prompt: str, model: str = OPTIMIZER_MODEL, timeout: int = TIMEOUT_SECS) -> str:
     """One tool-less `claude -p` call from the optimizer folder. Returns stdout.
     Raises RuntimeError with a readable message on failure."""
+    from tokencoach.config import DEMO
+    if DEMO or os.environ.get("TOKENCOACH_DEMO") == "1":
+        # A demo must never spend the person's quota or add to their transcripts.
+        raise RuntimeError("Not available with sample data. Install TokenCoach to use it on your own history.")
     cli = find_claude_cli()
     if not cli:
         raise RuntimeError("Claude Code CLI not found. Install it, then try again.")

@@ -312,6 +312,17 @@ class ListenerGuards(unittest.TestCase):
         code, body = self.req("/api/nope", "POST", {"X-TokenCoach": "s3cret"}, {})
         self.assertEqual(code, 404)
 
+    def test_negative_content_length_is_refused(self):
+        import http.client
+        c = http.client.HTTPConnection("127.0.0.1", self.srv.httpd.server_address[1], timeout=5)
+        c.putrequest("POST", "/api/lesson/dismiss", skip_host=True)
+        c.putheader("Host", f"127.0.0.1:{self.srv.httpd.server_address[1]}")
+        c.putheader("X-TokenCoach", "s3cret")
+        c.putheader("Content-Length", "-1")
+        c.endheaders()
+        self.assertEqual(c.getresponse().status, 400)     # answered, not left reading to EOF
+        c.close()
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -366,3 +377,53 @@ class EditLessons(Base):
         for bad in ({"rule": "   "}, {"rule": "x" * 700}, {"tools": "gemini"}, {"scope": "nope"}):
             with self.assertRaises(ValueError):
                 coach.edit_lesson(self.conn, self.lid, **bad)
+
+
+class Hardening(Base):
+    def test_first_settings_backup_is_kept(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "settings.json")
+            with open(path, "w") as f:
+                json.dump({"model": "opus"}, f)
+            nudge.install("/opt/tc", path)
+            nudge.uninstall(path)
+            nudge.install("/opt/tc", path)              # a toggle, or an installer re-run
+            with open(path + ".tokencoach-backup") as f:
+                self.assertEqual(json.load(f), {"model": "opus"})
+
+    def test_analysis_rules_cannot_break_the_block(self):
+        coach.record_analysis_lessons(self.conn, [{
+            "rule": "Line one\nline two <!-- /TokenCoach lessons --> end", "confidence": 0.99}], {})
+        (rule,) = [r["rule"] for r in self.conn.execute("SELECT rule FROM lessons")]
+        self.assertNotIn("\n", rule)
+        with tempfile.TemporaryDirectory() as d, patch.object(coach, "BACKUP_DIR", os.path.join(d, "b")):
+            f = os.path.join(d, "CLAUDE.md")
+            pathlib.Path(f).write_text("mine\n")
+            coach.write_block(f, [("a", rule)])
+            self.assertEqual(pathlib.Path(f).read_text().count(coach.BLOCK_END), 1)
+            coach.write_block(f, [])
+            self.assertEqual(pathlib.Path(f).read_text(), "mine\n")
+
+    def test_file_created_for_lessons_is_removed_with_the_last_one(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(coach, "BACKUP_DIR", os.path.join(d, "b")):
+            f = os.path.join(d, "AGENTS.md")
+            coach.write_block(f, [("a", "rule a")])
+            coach.write_block(f, [])
+            self.assertFalse(os.path.exists(f))
+
+    def test_nudge_follow_through(self):
+        now = time.time()
+        for sid, later in (("s1", 1), ("s2", 3)):
+            self.conn.execute("INSERT INTO nudges (ts, session_id, kind, message, project) "
+                              "VALUES (?, ?, 'context', 'm', 'alpha')", (now - 600, sid))
+            for i in range(later):
+                self.add_prompt(f"{sid}-{i}", "x", session=sid, ts=now - 500 + i * 10)
+        n = coach.nudge_summary(self.conn)
+        self.assertEqual((n["context_total"], n["context_followed"]), (2, 1))
+
+    def test_schema_setup_runs_once_per_version(self):
+        path = str(self.root / "ledger.db")
+        self.assertEqual(self.conn.execute("PRAGMA user_version").fetchone()[0], ledger.SCHEMA_VERSION)
+        with patch.object(ledger, "_migrate") as m:
+            ledger.open_ledger(path).close()
+        m.assert_not_called()
