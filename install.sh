@@ -71,6 +71,7 @@ if [ "$legacy_found" = true ] && [ "$NO_LAUNCH" != "1" ]; then
   pkill -f "$LEGACY_DIR/claude_bar.py" 2>/dev/null || true
   pkill -f "$LEGACY_DIR/tokencoach.py" 2>/dev/null || true
   pkill -x AIQuotaBarHost 2>/dev/null || true
+  pkill -f AIQuotaBarWidgetExtension 2>/dev/null || true
   LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
   [ -d /Applications/AIQuotaBarHost.app ] && "$LSREGISTER" -u /Applications/AIQuotaBarHost.app 2>/dev/null || true
   rm -rf /Applications/AIQuotaBarHost.app "/Applications/Restart AIQuotaLeft.app"

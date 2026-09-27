@@ -37,6 +37,7 @@ class LegacyDataMove(unittest.TestCase):
         with patch.object(config, "_LEGACY_SUPPORT", str(self.old)), \
                 patch.object(config, "APP_SUPPORT", str(self.new)), \
                 patch.object(config, "_LEGACY_FILES", {str(self.cfg_old): str(self.new / "config.json")}), \
+                patch.object(config, "CONFIG_FILE", str(self.new / "config.json")), \
                 patch.dict(os.environ, {"TOKENCOACH_DATA_DIR": ""}):
             return config.migrate_legacy_data()
 
@@ -47,6 +48,16 @@ class LegacyDataMove(unittest.TestCase):
         self.assertFalse(self.old.exists())
         self.assertEqual(len(moved), 2)
         self.assertEqual(self.run_move(), [])          # idempotent
+
+    def test_settings_merge_when_both_exist(self):
+        import json
+        self.new.mkdir()
+        (self.new / "config.json").write_text(json.dumps({"seen_welcome": True, "dashboard_token": "fresh"}))
+        self.cfg_old.write_text(json.dumps({"dashboard_token": "bookmarked", "refresh_interval": 60}))
+        self.run_move()
+        merged = json.loads((self.new / "config.json").read_text())
+        self.assertEqual(merged, {"seen_welcome": True, "dashboard_token": "bookmarked", "refresh_interval": 60})
+        self.assertFalse(self.cfg_old.exists())
 
     def test_finishes_a_partial_move_without_overwriting(self):
         self.new.mkdir()

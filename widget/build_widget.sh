@@ -112,7 +112,12 @@ LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchSe
 # writes new data. Quitting it freezes the widget on whatever it last drew:
 # a widget's own timeline policy is only a request, and the system throttles
 # it into hours.
-open -g -j "$INSTALL_PATH"
+HOST_LABEL="io.github.cagdasatici.tokencoach.widgethost"
+if launchctl print "gui/$(id -u)/$HOST_LABEL" >/dev/null 2>&1; then
+    launchctl kickstart -k "gui/$(id -u)/$HOST_LABEL" 2>/dev/null   # restart the supervised copy
+else
+    open -g -j "$INSTALL_PATH"
+fi
 sleep 2
 
 echo "  ✓  Widget installed!"

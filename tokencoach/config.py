@@ -34,6 +34,26 @@ _LEGACY_FILES = {
 }
 
 
+def _merge_json(src: str, dst: str) -> bool:
+    """Fold an old settings file into a newer one; the old file's values win,
+    since they are what the person chose (the newer file may only hold
+    defaults written before the move). Returns False if either isn't a dict."""
+    try:
+        with open(src) as f:
+            old = json.load(f)
+        with open(dst) as f:
+            new = json.load(f)
+    except (OSError, ValueError):
+        return False
+    if not isinstance(old, dict) or not isinstance(new, dict):
+        return False
+    tmp = dst + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({**new, **old}, f, indent=2)
+    os.replace(tmp, dst)
+    return True
+
+
 def migrate_legacy_data() -> list[str]:
     """Move data from pre-rename locations, once. Safe to call repeatedly;
     never overwrites anything that already exists at the new location."""
@@ -55,8 +75,13 @@ def migrate_legacy_data() -> list[str]:
         if os.path.isdir(old_opt) and not os.path.exists(os.path.join(APP_SUPPORT, "tokencoach-optimizer")):
             os.rename(old_opt, os.path.join(APP_SUPPORT, "tokencoach-optimizer"))
         for src, dst in _LEGACY_FILES.items():
-            if os.path.exists(src) and not os.path.exists(dst):
+            if not os.path.exists(src):
+                continue
+            if not os.path.exists(dst):
                 os.rename(src, dst)
+                moved.append(src)
+            elif dst == CONFIG_FILE and _merge_json(src, dst):
+                os.remove(src)
                 moved.append(src)
     except OSError:
         pass                                              # retried on next start

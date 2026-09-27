@@ -223,6 +223,16 @@ else
 fi
 
 # ── 5. widget host up (the widget's freshness depends on it) ─────────────────
+# Exactly one: the launchd-managed copy. A second one (e.g. opened by the
+# widget build before the agent existed) is harmless but wasteful.
+if [ -d "$HOST_APP" ]; then
+    hp=$(host_pids); hc=$(printf '%s' "$hp" | grep -c .)
+    hmanaged=$(launchctl list "$HOST_LABEL" 2>/dev/null | awk -F'= ' '/"PID"/{gsub(/;/,"",$2);print $2}')
+    if [ "$hc" -gt 1 ] && [ -n "$hmanaged" ] && repairing; then
+        for p in $hp; do [ "$p" != "$hmanaged" ] && kill "$p" 2>/dev/null; done
+        say_fixed "stopped duplicate widget host(s)"
+    fi
+fi
 if [ -d "$HOST_APP" ]; then
     if [ -n "$(host_pids)" ]; then
         say_ok "widget host running (widget refreshes on new data)"
