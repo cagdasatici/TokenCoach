@@ -36,7 +36,7 @@ for l in "$BASE.doctor" "$BASE.widgethost" "$BASE"; do
   launchctl bootout "gui/$UID_NUM/$l" 2>/dev/null || true
   rm -f "$AGENTS/$l.plist"
 done
-pkill -f "$INSTALL_DIR/tokencoach.py" 2>/dev/null || true
+ps -Ao pid=,args= | awk -v s="$INSTALL_DIR/tokencoach.py" '$3 == s && $2 ~ /[Pp]ython[0-9.]*$/ {print $1}' | xargs kill 2>/dev/null || true
 pkill -x TokenCoachWidget 2>/dev/null || true
 echo "  ✓  Stopped and removed launch agents and watchdog"
 

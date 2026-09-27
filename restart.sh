@@ -10,7 +10,11 @@ APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 PATTERN="$APP_DIR/tokencoach.py"
 UID_NUM=$(id -u)
 
-running() { pgrep -f "$PATTERN" 2>/dev/null; }
+# PIDs of the menu bar app itself: a Python process whose command line is
+# exactly "<python> <script>". Never match on a substring: shells, editors,
+# `tail` and `tokencoach.py --demo` mention the same path and must be left alone.
+app_pids() { ps -Ao pid=,args= | awk -v s="$1" '$3 == s && NF == 3 && $2 ~ /[Pp]ython[0-9.]*$/ {print $1}'; }
+running() { app_pids "$PATTERN"; }
 
 # 1. Graceful stop: SIGTERM so rumps can remove its status item, SIGKILL for
 #    anything still alive after ~5s.

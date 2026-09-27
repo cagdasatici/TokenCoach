@@ -27,7 +27,11 @@ LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchSe
 # also matches this script and its own greps, since they mention these paths.
 host_pids()  { ps -Ao pid=,comm= | awk -v p="$HOST_BIN" '$2 == p {print $1}'; }
 host_strays(){ ps -Ao pid=,comm= | awk -v p="$HOST_BIN" '$2 ~ /TokenCoachWidget$/ && $2 != p {print $1}'; }
-bar_pids()   { ps -Ao pid=,args= | awk '/[t]okencoach\.py/ {print $1}'; }
+# PIDs of the menu bar app itself: a Python process whose command line is
+# exactly "<python> <script>". Never match on a substring: shells, editors,
+# `tail` and `tokencoach.py --demo` mention the same path and must be left alone.
+app_pids() { ps -Ao pid=,args= | awk -v s="$1" '$3 == s && NF == 3 && $2 ~ /[Pp]ython[0-9.]*$/ {print $1}'; }
+bar_pids()   { app_pids "$APP_DIR/tokencoach.py"; }
 
 ok=0; fixed=0; failed=0
 say_ok()     { printf '  \033[32m✓\033[0m %s\n' "$1"; ok=$((ok+1)); }

@@ -25,6 +25,10 @@ LOG_DIR="$HOME/Library/Logs/TokenCoach"
 UID_NUM=$(id -u)
 NO_LAUNCH="${TOKENCOACH_NO_LAUNCH:-0}"
 
+# PIDs of the menu bar app itself: a Python process whose command line is
+# exactly "<python> <script>". Never match on a substring: shells, editors,
+# `tail` and `tokencoach.py --demo` mention the same path and must be left alone.
+app_pids() { ps -Ao pid=,args= | awk -v s="$1" '$3 == s && NF == 3 && $2 ~ /[Pp]ython[0-9.]*$/ {print $1}'; }
 say()  { printf '  %s\n' "$1"; }
 ok()   { printf '  \033[32m✓\033[0m  %s\n' "$1"; }
 warn() { printf '  \033[33m⚠\033[0m  %s\n' "$1"; }
@@ -68,10 +72,11 @@ if [ "$legacy_found" = true ] && [ "$NO_LAUNCH" != "1" ]; then
     launchctl bootout "gui/$UID_NUM/$l" 2>/dev/null || true
     rm -f "$AGENTS/$l.plist"
   done
-  pkill -f "$LEGACY_DIR/claude_bar.py" 2>/dev/null || true
-  pkill -f "$LEGACY_DIR/tokencoach.py" 2>/dev/null || true
+  for s in "$LEGACY_DIR/claude_bar.py" "$LEGACY_DIR/tokencoach.py"; do
+    app_pids "$s" | xargs kill 2>/dev/null || true
+  done
   pkill -x AIQuotaBarHost 2>/dev/null || true
-  pkill -f AIQuotaBarWidgetExtension 2>/dev/null || true
+  ps -Ao pid=,comm= | awk '$2 ~ /AIQuotaBarWidgetExtension$/ {print $1}' | xargs kill 2>/dev/null || true
   LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
   [ -d /Applications/AIQuotaBarHost.app ] && "$LSREGISTER" -u /Applications/AIQuotaBarHost.app 2>/dev/null || true
   rm -rf /Applications/AIQuotaBarHost.app "/Applications/Restart AIQuotaLeft.app"
@@ -136,7 +141,7 @@ cat > "$PLIST" <<PLIST_EOF
 </dict>
 </plist>
 PLIST_EOF
-pkill -f "$INSTALL_DIR/tokencoach.py" 2>/dev/null || true
+app_pids "$INSTALL_DIR/tokencoach.py" | xargs kill 2>/dev/null || true
 launchctl bootout "gui/$UID_NUM/$LABEL" 2>/dev/null || true
 sleep 1
 launchctl bootstrap "gui/$UID_NUM" "$PLIST" 2>/dev/null || launchctl kickstart -k "gui/$UID_NUM/$LABEL" 2>/dev/null || true
@@ -171,10 +176,10 @@ if [ -d "$LEGACY_DIR" ] && [ "$LEGACY_DIR" != "$INSTALL_DIR" ]; then
 fi
 
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  pgrep -f "$INSTALL_DIR/tokencoach.py" >/dev/null && break
+  [ -n "$(app_pids "$INSTALL_DIR/tokencoach.py")" ] && break
   sleep 1
 done
-pgrep -f "$INSTALL_DIR/tokencoach.py" >/dev/null && ok "Running — look for the ◆ in your menu bar" \
+[ -n "$(app_pids "$INSTALL_DIR/tokencoach.py")" ] && ok "Running — look for the ◆ in your menu bar" \
   || warn "Not running yet. Check $LOG_DIR/tokencoach.log"
 
 echo ""
