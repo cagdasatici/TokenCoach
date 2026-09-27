@@ -1,294 +1,181 @@
 # TokenCoach
 
-*Formerly AIQuotaLeft.* Tracks every Claude and ChatGPT prompt, coaches you to spend less
-quota for the same results, and shows what you have left in the menu bar.
+**See what every Claude and ChatGPT prompt really costs, and get coached to spend less
+for the same results.** A macOS menu bar app for people who live in Claude Code and Codex.
 
-> A fork of [AIQuotaBar](https://github.com/yagcioglutoprak/AIQuotaBar) by
-> [Toprak Yagcioglu](https://github.com/yagcioglutoprak), whose work this almost
-> entirely is. It reports what you have **left** rather than what you have used —
-> see [Changes in this fork](#changes-in-this-fork). Not an official AIQuotaBar release.
-
-**Stop getting rate-limited by surprise.** See how much Claude and ChatGPT quota you have **left**, live in the macOS menu bar.
-
-No Electron. No browser extension. One command to install.
-
-<!-- The demo recordings inherited from upstream show quota USED - bars filling
-     as quota is consumed - which is the opposite of what this fork displays.
-     Rather than illustrate the wrong behaviour, they are omitted until
-     re-recorded. The sample menu under "What it shows" is accurate: its
-     numbers and bar widths are taken from real rendered output. -->
-
+[![macOS](https://img.shields.io/badge/macOS-12%2B-black)](#install)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Fork of yagcioglutoprak/AIQuotaBar](https://img.shields.io/badge/fork%20of-yagcioglutoprak%2FAIQuotaBar-blue)](https://github.com/yagcioglutoprak/AIQuotaBar)
+[![Local only](https://img.shields.io/badge/data-stays%20on%20your%20Mac-blue)](#privacy)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
+  <img alt="TokenCoach dashboard: spend, coach lessons with before/after, timeline and costliest prompts" src="docs/images/dashboard-light.png">
+</picture>
+
+<sub>All screenshots use the built-in sample data (`tokencoach --demo`).</sub>
+
+---
+
+## The problem you can't see
+
+A $20–200 subscription feels flat, until you hit the 5-hour limit at 3pm. The cause is rarely
+one big question. It's habits that stay invisible:
+
+- **Long sessions.** Every reply re-reads the whole conversation. At 300k tokens of context,
+  "one more small thing" costs more than the original task.
+- **Broad asks.** "Implement all the open things" sends an agent on a 100-step tour of your
+  repository before it writes a line.
+- **The wrong model.** A quick question to the most expensive model, because it was selected.
+
+TokenCoach turns those habits into numbers, then helps you change them, and shows whether it worked.
+
+## How it works: measure → nudge → coach → prove
+
+### 1. Measure: every prompt, every token, every project
+
+<img align="right" width="340" alt="Menu bar panel" src="docs/images/panel.png">
+
+TokenCoach reads the transcripts that **Claude Code, Cowork and Codex** already write on your
+Mac and keeps a local ledger: one row per prompt, with tokens, model, project, what it would
+cost at API prices, and how much of your 5-hour quota it used.
+
+The menu bar shows the quota you have **left** for Claude and ChatGPT, today's spend, and your
+most expensive prompt. **Open dashboard** shows everything by day, project, model and tool,
+with an **All / Claude / OpenAI** switch and an **Advanced** mode for the deep dive.
+
+<br clear="right">
+
+### 2. Nudge: a heads-up before an expensive prompt runs
+
+<img alt="A TokenCoach nudge in Claude Code (illustration)" src="docs/images/nudge.png">
+
+A Claude Code hook adds a one-line tip at the moment it matters, based on *your own* history:
+a session re-reading 300k tokens per reply, a broad ask that historically ran 10× longer, a
+quick question on your priciest model, a prompt similar to one that cost $9 last week, or a
+nearly empty quota. It never blocks or rewrites what you typed.
+
+### 3. Coach: lessons written into the files your agents read
+
+<img alt="Coach: lessons with confidence, apply, edit, before/after" src="docs/images/coach-dark.png">
+
+Patterns that repeat across sessions become **lessons**, plain instructions for your coding
+agent such as *"when a request is broad, list the concrete items and wait for confirmation"*.
+
+- **Evidence decides.** Confidence is capped by how many separate sessions show the pattern.
+  At **95%+** one click writes the lesson into `CLAUDE.md` / `AGENTS.md`. Between 70% and 95%
+  you review it and decide. Below that it keeps collecting.
+- **Your words win.** **Edit** any lesson ("warn after 10 responses, not 30"). Edited lessons
+  are yours, and later analyses never overwrite them.
+- **Safe edits.** Lessons live in one clearly marked block, the original file is backed up
+  first, and **Remove** takes them out again.
+- **Improve any prompt.** Get a tighter rewrite of a costly prompt to copy or save as a template.
+- **Analyze deeper.** Claude reviews your 20 costliest prompts and proposes new lessons.
+
+### 4. Prove: before and after
+
+Every applied lesson shows what changed afterwards: $ per prompt, agent responses per
+prompt, session length, peak context and quota per prompt. So you know which habits paid off.
+
+<details>
+<summary><b>Advanced view</b>: quota over time, when you work, breakdowns, sessions</summary>
+<br>
+<img alt="Advanced view" src="docs/images/advanced-dark.png">
+</details>
 
 ---
 
 ## Install
 
-**One-line (recommended):**
+**One line** (recommended; also sets up start-at-login and the optional desktop widget):
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cagdasatici/AIQuotaLeft/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cagdasatici/TokenCoach/main/install.sh | bash
 ```
 
 **Homebrew:**
 ```bash
-brew tap cagdasatici/aiquotaleft https://github.com/cagdasatici/AIQuotaLeft
-brew install --HEAD cagdasatici/aiquotaleft/aiquotaleft
-aiquotaleft &
-```
-Homebrew installs the menu bar app only. The desktop widget needs Xcode — use the
-one-line installer above, or run `AIQuotaBarWidget/build_widget.sh` yourself.
-
-The app launches immediately and auto-detects your Claude and ChatGPT sessions from Chrome, Arc, Brave, Edge, Firefox, or Safari — no copy-pasting cookies.
-
----
-
-### Why this fork exists
-
-Toprak Yagcioglu built AIQuotaBar to make AI usage visible in the menu bar. This fork changes the question the interface answers: how much quota is left? My contributions are listed under [Changes in this fork](#changes-in-this-fork).
-
----
-
-## What it shows
-
-Every percentage is **quota remaining**, not quota used. 100% means a full
-tank; 0% means you're out.
-
-| Menu bar | Meaning |
-|---|---|
-| 🟢 88% | Plenty of session quota left — you're good |
-| 🟡 17% | Running low — approaching the 5-hour limit |
-| 🔴 0% | Rate-limited — shows time until reset |
-| 🔴 0% · | Session is fine but weekly quota is gone |
-
-Open the menu for full detail:
-
-```
-CLAUDE
-
-  🟢 5-hour
-  ████████████░░  88% left
-  resets today 15:41
-
-  🟡 Weekly
-  ██░░░░░░░░░░░░  17% left
-  resets Wed 23:00
-
-  🟢 Weekly (Sonnet)
-  ███████████░░░  78% left
-  resets Wed 23:00
-
-CHATGPT
-
-  🟢 5-hour
-  ██████████████  100% left
-  resets Thu 05:38
-
-  🟢 Weekly
-  ██████████████  100% left
-  resets Wed 23:00
+brew tap cagdasatici/tokencoach https://github.com/cagdasatici/TokenCoach
+brew install tokencoach
+tokencoach &          # first run adds it to your login items
 ```
 
----
-
-## Desktop Widget (NEW)
-
-Native macOS WidgetKit widget — see how much AI quota you have left, right on your desktop or in Notification Center.
-
-**Small widget:** Claude + ChatGPT percentages at a glance, color-coded by brand.
-
-**Medium widget:** Side-by-side breakdown with session limits, weekly caps, progress bars, and reset times.
-
-The widget syncs automatically with the menu bar app — no extra setup. Data updates every 60 seconds.
-
+**Just look first.** The demo uses sample data and doesn't read or change anything of yours:
 ```bash
-# Build the widget (requires Xcode)
-cd AIQuotaBarWidget && ./build_widget.sh
-# Then: right-click desktop → Edit Widgets → search "AI Quota"
+git clone https://github.com/cagdasatici/TokenCoach && cd TokenCoach
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python tokencoach.py --demo
 ```
 
-> The widget is entirely optional — the menu bar app works without it. Requires macOS 14+ and Xcode 15+.
+Requirements: macOS 12+, Python 3.10+. Claude Code and/or Codex for per-prompt tracking;
+a claude.ai or chatgpt.com login in your browser for the quota-left bars. The desktop widget
+needs Xcode (the installer builds it when Xcode is present).
+
+**Uninstall:** `bash ~/.tokencoach/uninstall.sh` (add `--purge` to delete your data too).
 
 ---
 
-## Features
+## What the numbers mean
 
-- **Zero-setup auth** — reads cookies directly from your browser (Chrome, Arc, Brave, Edge, Firefox, Safari)
-- **Claude + ChatGPT** — tracks Claude.ai 5-hour/weekly limits and ChatGPT Codex 5-hour/weekly limits
-- **Desktop widget** — native macOS WidgetKit widget with brand-colored progress bars
-- **Multi-provider** — add OpenAI, MiniMax, GLM (Zhipu) API keys to see spending alongside usage
-- **Burn rate + ETA** — predicts when you'll hit each limit based on your current pace
-- **Pacing alerts** — notifies you when you're on track to hit a limit within 30 minutes
-- **Auto-refresh on session expiry** — silently grabs fresh cookies when your session expires
-- **macOS notifications** — alerts when you drop to 20% and 5% remaining for Claude and ChatGPT
-- **Configurable refresh** — 1 / 5 / 15 min
-- **Runs at login** — via LaunchAgent, toggle from the menu
-- **Tiny footprint** — single-file Python app, no Electron, no background services beyond the app itself
-
----
-
-## Coach: spend less for the same results
-
-TokenCoach reads the transcripts that **Claude Code, Cowork and Codex** already write on
-your Mac and keeps a local ledger of every prompt: tokens, model, project, API-equivalent
-cost and how much quota it used. Nothing leaves your machine, except when you ask for an
-analysis or a prompt rewrite (sent to Claude through your own `claude` CLI).
-
-- **Nudges in Claude Code.** Before a prompt runs, TokenCoach can show a one-line tip in
-  Claude Code: a session that re-reads 300k tokens on every reply, a broad "implement
-  everything" ask (compared with your own history), a quick question on an expensive
-  model, a prompt similar to an earlier expensive one, or nearly no quota left. It never
-  blocks or rewrites your prompt. Toggle it in the menu (**Nudges in Claude Code**).
-- **Lessons → your CLAUDE.md / AGENTS.md.** Patterns that repeat across sessions become
-  lessons with a confidence score that is capped by how much evidence supports them. At
-  **95%+** they can be applied in one click; below that you review the evidence and decide;
-  with little evidence they keep collecting. Applied lessons live in a clearly marked
-  block (the original file is backed up first) and can be removed from the dashboard.
-- **Before / after.** Every applied lesson shows what changed afterwards: $ and agent
-  responses per prompt, session length and peak context.
-- **Improve.** Any costly prompt gets a tighter rewrite you can copy or save as a template.
-- **Dashboard.** Click the menu bar icon → **Open dashboard ↗** (Chrome if installed).
-  The simple view shows totals, the coach, a timeline and your costliest prompts;
-  **Advanced** adds filters, quota over time, a weekday × hour map, breakdowns, sessions
-  and every prompt. It is served only on `127.0.0.1` with a per-install key.
-- **Import Chat Export…** — claude.ai and ChatGPT web chats are not stored locally;
-  import their data export to include them. Their token counts are **estimates**.
-
-What the numbers mean:
-
-| | Claude Code / Cowork | Codex | Web chat imports |
+| | Claude Code / Cowork | Codex | claude.ai / chatgpt.com chats |
 |---|---|---|---|
-| Tokens per prompt | exact, from logs | exact, from logs | estimated |
-| API-equivalent $ | list price | nearest Claude tier¹ | — |
-| Quota used per prompt | estimated from this app's quota readings | from Codex's reading after each response | — |
+| Tokens per prompt | exact, from local transcripts | exact, from local transcripts | estimated from an imported data export |
+| API-equivalent $ | Anthropic list prices | OpenAI list prices¹ | not priced |
+| Quota per prompt | estimated from TokenCoach's quota readings | from Codex's own reading after each response | — |
 
-¹ OpenAI does not publish prices for the Codex models, so each is priced at the nearest
-Claude tier, an assumption labelled in the dashboard: `*-sol`, `gpt-6-*` and the plain
-`gpt-5.x` flagships ≈ Opus 5, `*-terra` ≈ Sonnet 5, `*-luna` / `*-mini` ≈ Haiku 4.5.
-Change a mapping in `~/.claude_bar_config.json` with
-`"ledger_model_equivalents": {"gpt-6-astra": "claude-sonnet-5"}`, or set exact prices with
-`"ledger_prices": {"gpt-6-astra": {"in": 5, "out": 20, "read": 0.5}}` (USD per million tokens).
-Use **Set Plan Prices…** to compare against your plans. The dashboard's **Claude / OpenAI**
-switch shows each provider on its own.
+**API-equivalent $** is what the same tokens would cost on the provider's API. On a
+subscription you pay a flat fee, so treat it as a yardstick for comparing prompts, projects and
+models, not as a bill. **Set Plan Prices…** in the menu shows what your plan is worth against it.
 
-"API-equivalent $" is what the same tokens would cost on the provider's API. On a
-subscription you pay a flat fee, so treat it as a yardstick, not a bill.
+¹ Standard-tier prices from OpenAI's pricing page (checked 2026-09-27), including long-context
+rates above 272K tokens. A model without a published price (e.g. `codex-auto-review`) is priced
+like its closest published sibling and labelled *estimated*. Override anything in
+`~/Library/Application Support/TokenCoach/config.json`:
 
-From a terminal: `python3 claude_bar.py --ledger | --dashboard | --optimize | --import-export FILE`
-(`--dashboard` writes a read-only copy; buttons work in the copy the app serves).
-
----
-
-## Why not just check the settings page?
-
-| | AIQuotaBar | Open settings page | Browser extension |
-|---|---|---|---|
-| Always visible | ✅ Menu bar + desktop widget | ❌ Manual tab switch | ⚠️ Badge only |
-| Notifications | ✅ 20% + 5% left + pacing alerts | ❌ None | ⚠️ Varies |
-| Claude + ChatGPT | ✅ All in one place | ❌ One at a time | ❌ |
-| Desktop widget | ✅ Native WidgetKit | ❌ | ❌ |
-| Privacy | ✅ Local only | ✅ | ⚠️ Depends on extension |
-| Install | ✅ One command | ✅ Nothing | ❌ Store + permissions |
-| No Electron | ✅ Single-file Python | ✅ | ❌ Often Electron |
-
----
-
-## Requirements
-
-- macOS 12+
-- Python 3.10+
-- A paid Claude or ChatGPT account
-- Chrome, Arc, Brave, Edge, Firefox, or Safari with an active session
-
----
-
-## Manual install
-
-```bash
-git clone https://github.com/cagdasatici/AIQuotaLeft.git
-cd AIQuotaLeft
-pip install -r requirements.txt
-python3 claude_bar.py
+```json
+{
+  "ledger_prices": {"gpt-6-astra": {"in": 10, "read": 1, "out": 50}},
+  "ledger_model_equivalents": {"codex-auto-review": "gpt-5.6-luna"},
+  "ledger_plans": {"claude": 100, "chatgpt": 20}
+}
 ```
 
----
+## Privacy
 
-## How it works
-
-The app calls the same private usage API that `claude.ai/settings/usage` uses. It authenticates using your browser's existing session cookies (read locally — never transmitted anywhere except to `claude.ai`).
-
-[`curl_cffi`](https://github.com/yifeikong/curl_cffi) is used to mimic a Chrome TLS fingerprint, which is required to pass Cloudflare's bot protection.
-
-| API field | Displayed as |
-|---|---|
-| `five_hour` | 5-hour |
-| `seven_day` | Weekly |
-| `seven_day_sonnet` | Weekly (Sonnet) |
-| `extra_usage` | Extra Usage toggle |
-
----
+- **Everything stays on your Mac.** The ledger is a local SQLite file; the dashboard is served
+  only on `127.0.0.1`, behind a per-install key.
+- **What is read:** Claude Code transcripts (`~/.claude/projects`), Cowork logs, Codex sessions
+  (`~/.codex/sessions`), and, for the quota bars, your claude.ai / chatgpt.com session cookies
+  from your browser (macOS may ask for Keychain access once). Cookies are only ever sent to
+  claude.ai / chatgpt.com.
+- **What leaves, and only when you click:** **Analyze deeper** and **Improve** send a digest of
+  your costliest prompts (or the one prompt) to Claude through *your own* `claude` CLI, running
+  Sonnet 5 with all tools off. That counts against your Claude plan like any Claude Code prompt,
+  typically $0.03–0.12 API-equivalent per run, and TokenCoach tracks it like any other session.
+- **What changes on your Mac:** a login agent, a small watchdog that restarts the app if it
+  dies, the Claude Code hook (a backup of `~/.claude/settings.json` is written first, and you
+  can turn nudges off in the menu), and lesson blocks you choose to apply. The uninstaller
+  removes all of it.
 
 ## Troubleshooting
 
-**App doesn't appear in menu bar**
-```bash
-tail -50 ~/.claude_bar.log
-```
-
-**Cookies not detected**
-Make sure you're logged into [claude.ai](https://claude.ai) in your browser, then click **Auto-detect from Browser** in the menu.
-
-**Session expired / showing ◆ !**
-The app will try to auto-detect fresh cookies from your browser. If that fails, click **Set Session Cookie…**.
-
-**ChatGPT shows HTTP 401**
-The browser can return an expired Codex access token. AIQuotaLeft now uses a fresh local Codex token when it belongs to the same account; if none is available, sign in at chatgpt.com and click **Refresh Now**.
-
----
-
-## Roadmap
-
-- [x] Homebrew tap (`brew tap cagdasatici/aiquotaleft https://github.com/cagdasatici/AIQuotaLeft`)
-- [x] Native macOS desktop widget (WidgetKit)
-- [x] Burn rate ETA + pacing alerts
-- [ ] Linux system tray support
-- [ ] Windows tray app
-- [ ] Customizable notification thresholds
-- [ ] Usage history graph
-- [ ] Multiple Claude account support
-
----
-
-## Contributing
-
-PRs welcome. Open an issue first for large changes. See [Manual install](#manual-install) for dev setup. Logs: `~/.claude_bar.log`.
-
----
+- **No ◆ in the menu bar:** `tail -50 ~/Library/Logs/TokenCoach/tokencoach.log`, then
+  `bash ~/.tokencoach/tokencoach-doctor.sh` checks and repairs the moving parts.
+- **Quota bars empty:** log in at claude.ai / chatgpt.com in your browser, then
+  **Auto-detect from Browser** in the ⚙ menu.
+- **Dashboard buttons do nothing:** open it from the menu bar icon; a saved copy is read-only.
+- **Command line:** `python3 ~/.tokencoach/tokencoach.py --help` (`--ledger`, `--dashboard`,
+  `--optimize`, `--import-export FILE`, `--demo`).
 
 ## Credits
 
-Built on [AIQuotaBar](https://github.com/yagcioglutoprak/AIQuotaBar) by
-[Toprak Yagcioglu](https://github.com/yagcioglutoprak) — the app, the provider
-fetchers, the widget and the installer are his, under MIT. Issues and PRs that
-aren't specific to the changes below belong upstream.
-
-### Changes in this fork
-
-- Menu bar and widget show quota **remaining** instead of used.
-- Widget colour thresholds inverted to match (red/orange now mean *nearly out*).
-- Widget progress bars drain as quota is consumed.
-- Widget config intent no longer relies on an ambiguous `AIProvider.none`, which could
-  compile to `Optional.none` and leave the widget blank.
-- `build_widget.sh` drops the build-directory copy from LaunchServices, so the system
-  can't host the widget from a stale build instead of `/Applications`.
-- Renamed TokenCoach: per-prompt ledger for Claude Code, Cowork and Codex; dashboard;
-  Claude Code nudges; lessons written to CLAUDE.md / AGENTS.md with before/after;
-  prompt rewrites and templates; chat-export import.
+TokenCoach is built on **[AIQuotaBar](https://github.com/yagcioglutoprak/AIQuotaBar)** by
+[Toprak Yagcioglu](https://github.com/yagcioglutoprak). The menu bar app, the quota fetching
+for claude.ai and ChatGPT, and the desktop widget all started there. TokenCoach adds the ledger,
+dashboard, nudges, coaching and before/after measurement. If you like the menu bar part,
+please star the original too.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Toprak Yagcioglu.
+[MIT](LICENSE). Copyright © 2026 Toprak Yagcioglu (AIQuotaBar) and the TokenCoach contributors.
 
-## Disclaimer
-
-Not affiliated with or endorsed by Anthropic. Uses undocumented internal APIs that may change without notice.
+Not affiliated with or endorsed by Anthropic or OpenAI. The quota bars use the same private
+usage endpoints as the providers' own settings pages, and may break when those change.

@@ -1,6 +1,12 @@
 """Usage ledger: parsing, dedupe, incremental ingest, quota attribution,
 chat-export import, report and optimizer plumbing. Fixtures only - never the
 owner's real logs."""
+import os as _os
+import tempfile as _tempfile
+
+# Isolate from the real data folder before anything imports tokencoach.
+_os.environ.setdefault("TOKENCOACH_DATA_DIR", _tempfile.mkdtemp(prefix="tokencoach-test-"))
+
 import json
 import os
 import pathlib
@@ -10,7 +16,7 @@ import unittest
 import zipfile
 from unittest.mock import patch
 
-from aiquotabar import ledger
+from tokencoach import ledger
 
 
 def _jl(path, rows, mode="w"):
@@ -109,23 +115,33 @@ class Pricing(unittest.TestCase):
         self.assertEqual(ledger._price_for("claude-opus-5")["in"], 5.0)
         self.assertEqual(ledger._price_for("claude-haiku-4-5-20251001")["in"], 1.0)
 
-    def test_openai_models_priced_at_claude_tier(self):
-        self.assertEqual(ledger.equivalent_model("gpt-5.6-terra"), "claude-sonnet-5")
-        self.assertEqual(ledger.equivalent_model("gpt-5.6-sol"), "claude-opus-5")
-        self.assertEqual(ledger.equivalent_model("gpt-5.6-luna"), "claude-haiku-4-5")
-        self.assertEqual(ledger.equivalent_model("gpt-5.4-mini"), "claude-haiku-4-5")
-        self.assertEqual(ledger.equivalent_model("gpt-6-astra"), "claude-opus-5")
-        self.assertIsNone(ledger.equivalent_model("claude-sonnet-5"))
+    def test_openai_list_prices(self):
+        # gpt-6-astra: $10 in, $1 cached, $50 out
+        self.assertAlmostEqual(ledger.call_cost("gpt-6-astra", 100_000, 10_000, 0, 0, 100_000),
+                               (100_000 * 10 + 10_000 * 50 + 100_000 * 1) / 1e6)
+        self.assertAlmostEqual(ledger.call_cost("gpt-5.6-terra", 200_000, 0, 0, 0, 0), 0.4)
+        self.assertAlmostEqual(ledger.call_cost("gpt-5.4-mini", 0, 1_000_000, 0, 0, 0), 4.5)
+        self.assertIsNone(ledger.equivalent_model("gpt-5.6-sol"))      # has a real price
         self.assertIsNone(ledger.call_cost("unknown", 1, 1, 0, 0, 0))
-        # 1M fresh input + 1M cached on terra = Sonnet 5 input + cache read
-        self.assertAlmostEqual(ledger.call_cost("gpt-5.6-terra", 1_000_000, 0, 0, 0, 1_000_000), 2.2)
+
+    def test_long_context_rates_apply_to_the_whole_request(self):
+        short = ledger.call_cost("gpt-5.6-sol", 200_000, 0, 0, 0, 0)
+        long = ledger.call_cost("gpt-5.6-sol", 300_000, 0, 0, 0, 0)
+        self.assertAlmostEqual(short, 0.8)          # $4 / M
+        self.assertAlmostEqual(long, 2.4)           # $8 / M for all 300k
+
+    def test_unpublished_models_use_a_labelled_sibling(self):
+        self.assertEqual(ledger.equivalent_model("codex-auto-review"), "gpt-5.4-mini")
+        self.assertEqual(ledger.equivalent_model("gpt-5.7-luna"), "gpt-5.6-luna")
+        self.assertEqual(ledger.equivalent_model("gpt-6-nova"), "gpt-6-astra")
+        self.assertIsNone(ledger.equivalent_model("claude-sonnet-5"))
 
     def test_user_prices_and_equivalents_win(self):
         o = ledger.ledger_overrides({
             "ledger_prices": {"gpt-6": {"in": 3.0, "out": 9.0}},
-            "ledger_model_equivalents": {"gpt-5.6-sol": "claude-sonnet-5", "bad": "nope"}})
+            "ledger_model_equivalents": {"codex-auto-review": "gpt-5.6-luna", "bad": "nope"}})
         self.assertAlmostEqual(ledger.call_cost("gpt-6-astra", 1_000_000, 0, 0, 0, 0, o), 3.0)
-        self.assertEqual(ledger.equivalent_model("gpt-5.6-sol", o), "claude-sonnet-5")
+        self.assertEqual(ledger.equivalent_model("codex-auto-review", o), "gpt-5.6-luna")
         self.assertNotIn("bad", o[ledger.EQUIVALENTS_KEY])
 
 
@@ -133,16 +149,16 @@ class Repricing(LedgerTestCase):
     def test_changed_mapping_reprices_codex_but_not_claude(self):
         _jl(self.root / "codex/2026/09/27/rollout-a.jsonl", [
             _codex_meta(), _codex_turn("gpt-5.6-sol"), _codex_prompt("go"),
-            _codex_record("r1", "2026-09-27T10:00:05Z", inp=1_000_000, cached=0, out=0)])
+            _codex_record("r1", "2026-09-27T10:00:05Z", inp=200_000, cached=0, out=0)])
         _jl(self.root / "claude/p/s1.jsonl", [_cc_user("u1", "hi", "2026-09-27T10:00:00Z"),
                                             _cc_asst("m1", "2026-09-27T10:00:01Z")])
         self.ingest()
         cost = lambda i: self.conn.execute("SELECT cost_usd FROM calls WHERE id = ?", (i,)).fetchone()[0]
-        self.assertAlmostEqual(cost("openai:r1"), 5.0)          # Opus 5 input price
+        self.assertAlmostEqual(cost("openai:r1"), 0.8)          # gpt-5.6-sol list price
         claude_before = cost("anthropic:m1")
         ledger.reprice(self.conn, ledger.ledger_overrides(
-            {"ledger_model_equivalents": {"gpt-5.6-sol": "claude-sonnet-5"}}))
-        self.assertAlmostEqual(cost("openai:r1"), 2.0)          # now Sonnet 5
+            {"ledger_prices": {"gpt-5.6-sol": {"in": 1.0, "out": 1.0}}}))
+        self.assertAlmostEqual(cost("openai:r1"), 0.2)          # user price wins
         self.assertEqual(cost("anthropic:m1"), claude_before)
 
 
@@ -360,7 +376,7 @@ class Summaries(LedgerTestCase):
         _ = _t
 
     def test_menu_lines(self):
-        from aiquotabar.ui import _ledger_menu_lines
+        from tokencoach.ui import _ledger_menu_lines
         self.assertIn("Indexing", _ledger_menu_lines(None, "")[0])
         lines = _ledger_menu_lines({
             "cost": 1.5, "prompts": 3, "tokens": 2_000_000, "calls": 4,
@@ -384,7 +400,7 @@ class ReportAndOptimizer(LedgerTestCase):
         self.ingest()
 
     def test_dashboard_renders_and_embeds_data_safely(self):
-        from aiquotabar.ledger_report import build_report, dashboard_data
+        from tokencoach.ledger_report import build_report, dashboard_data
         empty = build_report(self.conn, {})
         self.assertIn("<title>TokenCoach</title>", empty)
         self._seed()
@@ -403,7 +419,7 @@ class ReportAndOptimizer(LedgerTestCase):
         _ = dashboard_data
 
     def test_orphan_calls_get_a_placeholder_prompt(self):
-        from aiquotabar.ledger_report import dashboard_data
+        from tokencoach.ledger_report import dashboard_data
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         _jl(self.root / "claude/p/s5.jsonl", [_cc_asst("lone", now, session="s5")])
@@ -413,7 +429,7 @@ class ReportAndOptimizer(LedgerTestCase):
         self.assertEqual(d["facts"][0][12], 0)             # not counted as a prompt
 
     def test_open_file_prefers_configured_then_chrome(self):
-        from aiquotabar import ledger_report
+        from tokencoach import ledger_report
         with patch.object(ledger_report.os.path, "exists", side_effect=lambda p: "Google Chrome" in p), \
                 patch.object(ledger_report.subprocess, "Popen") as popen:
             ledger_report.open_file("/tmp/x.html")
@@ -424,7 +440,7 @@ class ReportAndOptimizer(LedgerTestCase):
             popen.assert_called_once_with(["open", "/tmp/x.html"])
 
     def test_digest_excludes_optimizer_runs(self):
-        from aiquotabar.optimizer import build_digest
+        from tokencoach.optimizer import build_digest
         self._seed()
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -439,7 +455,7 @@ class ReportAndOptimizer(LedgerTestCase):
         self.assertNotIn("You are reviewing", digest)
 
     def test_run_optimizer_with_fake_cli(self):
-        from aiquotabar import optimizer, ledger_report
+        from tokencoach import optimizer, ledger_report
         self._seed()
         fake = self.root / "fake-claude"
         fake.write_text("#!/bin/sh\ncat > /dev/null\necho '## Biggest wins'\necho '- **Start new sessions** sooner'\n")
@@ -456,7 +472,7 @@ class ReportAndOptimizer(LedgerTestCase):
         _ = ledger_report
 
     def test_optimizer_reports_missing_cli(self):
-        from aiquotabar import optimizer
+        from tokencoach import optimizer
         with patch.object(optimizer, "find_claude_cli", return_value=None):
             with self.assertRaisesRegex(RuntimeError, "not found"):
                 optimizer.run_optimizer(self.conn)
@@ -464,7 +480,7 @@ class ReportAndOptimizer(LedgerTestCase):
 
 class ChatImport(LedgerTestCase):
     def test_claude_export_zip(self):
-        from aiquotabar.chat_import import import_export
+        from tokencoach.chat_import import import_export
         conv = [{"uuid": "cv1", "name": "Trip plan", "chat_messages": [
             {"sender": "human", "text": "a" * 400, "created_at": "2026-09-01T10:00:00Z"},
             {"sender": "assistant", "text": "b" * 800, "created_at": "2026-09-01T10:00:10Z"},
@@ -487,7 +503,7 @@ class ChatImport(LedgerTestCase):
         self.assertEqual(len(self.calls()), 2)
 
     def test_chatgpt_export_follows_current_branch(self):
-        from aiquotabar.chat_import import import_export
+        from tokencoach.chat_import import import_export
         conv = [{"id": "g1", "title": "Code help", "current_node": "a2", "mapping": {
             "root": {"message": None, "parent": None},
             "u1": {"parent": "root", "message": {"author": {"role": "user"}, "create_time": 1.0,
@@ -506,7 +522,7 @@ class ChatImport(LedgerTestCase):
         self.assertEqual(self.calls()[0]["model"], "gpt-5")
 
     def test_rejects_unknown_file(self):
-        from aiquotabar.chat_import import import_export
+        from tokencoach.chat_import import import_export
         path = self.root / "other.json"
         path.write_text(json.dumps([{"foo": 1}]))
         with self.assertRaises(ValueError):
@@ -515,7 +531,7 @@ class ChatImport(LedgerTestCase):
 
 class MarkdownRendering(unittest.TestCase):
     def test_basic_blocks_and_escaping(self):
-        from aiquotabar.optimizer import markdown_to_html
+        from tokencoach.optimizer import markdown_to_html
         html = markdown_to_html("## Wins\n1. **Bold** <x>\n2. `code`\n\nplain para")
         self.assertIn("<h2>Wins</h2>", html)
         self.assertIn("<ol>", html)

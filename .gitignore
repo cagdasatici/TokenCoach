@@ -13,8 +13,12 @@ build/
 venv/
 env/
 
-# User data (contains session cookies — never commit!)
-.claude_bar_config.json
+# User data (session cookies, ledger) — never commit
+config.json
+*.db
+*.db-wal
+*.db-shm
+usage.json
 
 # Logs
 *.log
@@ -35,8 +39,9 @@ Icon?
 *.swo
 
 # Xcode build artifacts
-AIQuotaBarWidget/build/
-AIQuotaBarWidget/build_*/
+widget/build/
+widget/build_*/
+scratch.md
 xcuserdata/
 *.xcuserstate
 

@@ -1,24 +1,28 @@
-# AIQuotaLeft — working instructions
+# TokenCoach — working instructions
 
 ## Durable constraints
 
-This is a credited fork of AIQuotaBar. The product displays **quota remaining**: provider usage is stored as used; invert exactly once at the display boundary and keep title/menu/widget consistent. Preserve upstream attribution and the README's fork-specific scope. Session limits drive the main percentage; weekly exhaustion remains visible. Modules live in `aiquotabar/`; `claude_bar.py` is the entry point, not the entire app. No direct `rumps.notification()`; use the existing notification wrapper. Do not add a session_key-only field or double-scale 0–100 values. Preserve optional widget behavior and browser detection order. Never print/cache credentials in new locations or commit account data. Keep the app lightweight, no Electron and no general web server — the one exception is the stdlib dashboard listener in `aiquotabar/server.py` (127.0.0.1 only, per-install token, Host check), approved by the owner on 2026-09-27; do not widen it. The Claude Code nudge hook must stay non-blocking and silent on failure, and lessons may only edit instruction files inside the managed block, with a backup; keep README concise and evidence honest. Growth claims and provider behavior from old planning notes are dated, not current facts. Do not restart/install the user's app merely to test a source edit.
+- **Attribution.** TokenCoach is built on AIQuotaBar by Toprak Yagcioglu. Keep the credit in README, LICENSE and the app's About box. The old names appear in code only where needed to migrate pre-rename installs (`install.sh`, `tokencoach/legacy.py`, `tokencoach/config.py`, `claude_bar.py`).
+- **Quota is shown as remaining.** Providers report usage; invert exactly once at the display boundary and keep title, menu, panel and widget consistent. Session limits drive the main percentage; weekly exhaustion stays visible.
+- **Privacy.** Never print or cache credentials in new places, never commit account data, and never put personal data in screenshots: README images come only from `tokencoach.py --screenshots`, which uses the sample data in `tokencoach/demo.py`.
+- **Lightweight.** No Electron and no general web server. The one exception is the stdlib dashboard listener in `tokencoach/server.py` (127.0.0.1 only, per-install token, Host check); do not widen it.
+- **The person stays in control.** The Claude Code nudge hook must never block or rewrite a prompt and must stay silent on failure. Lessons edit instruction files only inside the managed block, after a backup, and only when confident or confirmed. `--demo` must never touch the person's real files or settings.
+- **Honest numbers.** Label estimates as estimates (Claude quota per prompt, chat imports, models without a published price). Date the price tables and cite their source.
+- Code lives in `tokencoach/`; `tokencoach.py` is the launcher. Use the notification wrapper, not `rumps.notification()`. Don't restart or reinstall the person's running app just to test a source edit.
 
-## Efficient working loop
+## Working loop
 
-- For orientation or continuation, read [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md), then only the linked section relevant to the task. For a precise edit, inspect the named code and nearby tests first. Historical reviews are references, not a startup reading list.
-- Search filenames with `rg --files`, then symbols with scoped `rg -n`. Read bounded sections; exclude dependencies, generated output and runtime/private data unless needed.
-- Preserve existing working-tree changes. Use the smallest coherent change and focused verification first; run the full required gate before declaring completion. Do not repeat successful checks without a new change or unresolved concern.
-- Default to one agent. Delegate only when requested and the independent work justifies its context cost. Keep completion evidence concise: result, relevant checks, remaining blocker.
-- Update the current context when a milestone changes; replace stale summaries and link evidence instead of appending another review essay. Dates and test counts are snapshots, not permanent guarantees. Markdown guidance does not set model, effort, billing or hard token limits.
+- For orientation read [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md), then only the code the task touches and its tests.
+- Keep existing working-tree changes. Make the smallest coherent change, verify it, then run the full test suite before calling it done.
+- Update PROJECT_CONTEXT.md when a milestone changes; replace stale summaries rather than appending.
 
 ## Verification
 
 ```sh
-# Use Python >=3.10 with requirements.txt installed, not macOS Python 3.9.
-python3 -m unittest discover -s tests
-# On this machine the existing dependency-equipped interpreter is:
-/Users/cagdas/.ai-quota-bar/.venv/bin/python3 -m unittest discover -s tests
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Python >= 3.10
+.venv/bin/python -m unittest discover -s tests
+.venv/bin/python tokencoach.py --demo          # dashboard with sample data
+TOKENCOACH_NO_LAUNCH=1 TOKENCOACH_DIR=/tmp/tc TOKENCOACH_REPO="$PWD" bash install.sh   # install without touching the system
 ```
 
-Run only checks relevant to the change, then any required release gate. Report environment limitations and failed checks explicitly.
+Report environment limitations and failed checks explicitly.

@@ -1,10 +1,10 @@
 # Usage ledger, dashboard and prompt optimizer — design
 
-Date: 2026-09-27. Status: implemented 2026-09-27 (all four phases).
+Date: 2026-09-27. Status: implemented (see PROJECT_CONTEXT.md for the current state).
 
 ## Goal
 
-AIQuotaLeft shows how much quota is left. This adds *where it went*: per prompt,
+TokenCoach shows how much quota is left. This adds *where it went*: per prompt,
 session, project, model and tool, across Claude Code, Cowork and Codex, plus an
 on-demand optimizer that reviews the most expensive sessions and suggests
 cheaper habits and tighter prompts.
@@ -20,7 +20,7 @@ cheaper habits and tighter prompts.
 
 ## Components
 
-1. **`aiquotabar/ledger.py`** — incremental ingester into `~/.ai-quota-bar/ledger.db`
+1. **`tokencoach/ledger.py`** — incremental ingester into `~/.tokencoach/ledger.db`
    (SQLite). Remembers byte offset per file so each pass reads only new lines.
    Tables: `prompts` (user turn: session, source, project/cwd, timestamp, full
    prompt text), `calls` (per model response: model, token breakdown, API-equivalent

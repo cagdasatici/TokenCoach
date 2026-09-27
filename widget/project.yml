@@ -1,0 +1,72 @@
+name: TokenCoachWidget
+options:
+  bundleIdPrefix: io.github.cagdasatici.tokencoach
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "1.2"
+    CURRENT_PROJECT_VERSION: "3"
+
+targets:
+  TokenCoachWidget:
+    type: application
+    platform: macOS
+    sources:
+      - path: TokenCoachWidget
+        excludes:
+          - "*.entitlements"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.cagdasatici.tokencoach.widget
+        CODE_SIGN_ENTITLEMENTS: TokenCoachWidget/TokenCoachWidget.entitlements
+        INFOPLIST_KEY_LSUIElement: true
+        GENERATE_INFOPLIST_FILE: "YES"
+        MARKETING_VERSION: "1.2"
+        CURRENT_PROJECT_VERSION: "3"
+    dependencies:
+      - target: TokenCoachWidgetExtension
+        embed: true
+        codeSign: true
+
+  TokenCoachWidgetExtension:
+    type: app-extension
+    platform: macOS
+    product: TokenCoachWidgetExtension
+    sources:
+      - path: TokenCoachWidgetExtension
+        excludes:
+          - "*.entitlements"
+          - Info.plist
+    info:
+      path: TokenCoachWidgetExtension/Info.plist
+      properties:
+        CFBundleDisplayName: TokenCoachWidget
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.cagdasatici.tokencoach.widget.extension
+        CODE_SIGN_ENTITLEMENTS: TokenCoachWidgetExtension/TokenCoachWidgetExtension.entitlements
+        CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: "YES"
+    dependencies:
+      - framework: WidgetKit.framework
+        embed: false
+      - framework: SwiftUI.framework
+        embed: false
+
+schemes:
+  TokenCoachWidget:
+    build:
+      targets:
+        TokenCoachWidget: all
+        TokenCoachWidgetExtension: all
+    run:
+      config: Debug
+    archive:
+      config: Release

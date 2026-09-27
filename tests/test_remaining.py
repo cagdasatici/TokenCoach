@@ -11,6 +11,12 @@ Both were caught by hand and neither was guarded, so both recurred:
    Optional.none, which turns the optional provider slots into required
    parameters, and WidgetKit then renders a permanently blank widget.
 """
+import os as _os
+import tempfile as _tempfile
+
+# Isolate from the real data folder before anything imports tokencoach.
+_os.environ.setdefault("TOKENCOACH_DATA_DIR", _tempfile.mkdtemp(prefix="tokencoach-test-"))
+
 import base64
 import json
 import pathlib
@@ -20,26 +26,26 @@ import unittest
 from unittest.mock import patch
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-SWIFT = REPO / "AIQuotaBarWidget" / "AIQuotaBarWidgetExtension"
+SWIFT = REPO / "widget" / "TokenCoachWidgetExtension"
 
 
 class RemainingConversion(unittest.TestCase):
     def test_inverts_usage(self):
-        from aiquotabar.ui import _remaining
+        from tokencoach.ui import _remaining
         self.assertEqual(_remaining(0), 100)
         self.assertEqual(_remaining(100), 0)
         self.assertEqual(_remaining(12), 88)
 
     def test_clamps_out_of_range(self):
-        from aiquotabar.ui import _remaining
+        from tokencoach.ui import _remaining
         self.assertEqual(_remaining(120), 0)
         self.assertEqual(_remaining(-20), 100)
 
 
 class MenuRendering(unittest.TestCase):
     def _row(self, used):
-        from aiquotabar.providers import LimitRow
-        from aiquotabar.ui import _row_lines
+        from tokencoach.providers import LimitRow
+        from tokencoach.ui import _row_lines
         return _row_lines(LimitRow("Session", used, "resets in 1h"))
 
     def test_row_reports_remaining_not_used(self):
@@ -52,7 +58,7 @@ class MenuRendering(unittest.TestCase):
         self.assertIn("left", self._row(12)[0])
 
     def test_bar_drains_as_quota_is_consumed(self):
-        from aiquotabar.ui import _bar, _remaining
+        from tokencoach.ui import _bar, _remaining
         nearly_full = _bar(_remaining(5)).count("█")
         nearly_empty = _bar(_remaining(95)).count("█")
         self.assertGreater(nearly_full, nearly_empty)
@@ -60,15 +66,15 @@ class MenuRendering(unittest.TestCase):
     def test_title_and_dropdown_agree(self):
         # The exact contradiction that shipped: title said one thing, the row
         # under it said another.
-        from aiquotabar.ui import _remaining
+        from tokencoach.ui import _remaining
         used = 17
         self.assertIn(f"{_remaining(used)}%", self._row(used)[0])
 
 
 class FloatingPanelResetTimes(unittest.TestCase):
     def test_compacts_reset_copy_but_keeps_date_and_time(self):
-        from aiquotabar.providers import LimitRow
-        from aiquotabar.ui import _panel_limit_label, _panel_reset_label
+        from tokencoach.providers import LimitRow
+        from tokencoach.ui import _panel_limit_label, _panel_reset_label
         self.assertEqual(_panel_reset_label("resets today 21:16"), "21:16")
         self.assertEqual(_panel_reset_label("resets tomorrow 21:16"), "+1d 21:16")
         self.assertEqual(_panel_reset_label(""), "starts on use")
@@ -82,24 +88,24 @@ class FloatingPanelResetTimes(unittest.TestCase):
         )
 
     def test_each_limit_row_renders_its_reset_time(self):
-        ui = (REPO / "aiquotabar" / "ui.py").read_text()
+        ui = (REPO / "tokencoach" / "ui.py").read_text()
         self.assertIn("lbl.setStringValue_(_panel_limit_label(row))", ui)
 
 
 class LimitHitDisplay(unittest.TestCase):
     def test_does_not_present_sample_counts_as_lockouts(self):
-        ui = (REPO / "aiquotabar" / "ui.py").read_text()
+        ui = (REPO / "tokencoach" / "ui.py").read_text()
         self.assertNotIn("Hit limit", ui)
         self.assertIn("At this pace: limit in", ui)
 
 
 class StatusIcon(unittest.TestCase):
     def test_red_when_almost_out(self):
-        from aiquotabar.ui import _status_icon
+        from tokencoach.ui import _status_icon
         self.assertEqual(_status_icon(99), "\U0001f534")
 
     def test_green_when_plenty_left(self):
-        from aiquotabar.ui import _status_icon
+        from tokencoach.ui import _status_icon
         self.assertEqual(_status_icon(5), "\U0001f7e2")
 
 
@@ -140,13 +146,13 @@ class WidgetViewsShowRemaining(unittest.TestCase):
 class BuildScript(unittest.TestCase):
     def test_signs_before_installing(self):
         # An unsigned bundle is never registered by macOS.
-        sh = (REPO / "AIQuotaBarWidget" / "build_widget.sh").read_text()
+        sh = (REPO / "widget" / "build_widget.sh").read_text()
         self.assertIn("codesign --force --sign -", sh)
         self.assertIn("--entitlements", sh)
 
     def test_every_build_gets_a_distinct_version(self):
         # chronod ignores a rebuild at an unchanged bundle version.
-        sh = (REPO / "AIQuotaBarWidget" / "build_widget.sh").read_text()
+        sh = (REPO / "widget" / "build_widget.sh").read_text()
         self.assertIn("CURRENT_PROJECT_VERSION=", sh)
         self.assertIn("BUILD_NUMBER", sh)
 
@@ -159,26 +165,26 @@ class BarPctIgnoresWeeklyRows(unittest.TestCase):
     Claude already follows, just not yet applied to multi-row providers."""
 
     def _pd(self, *label_pcts):
-        from aiquotabar.providers import LimitRow, ProviderData
+        from tokencoach.providers import LimitRow, ProviderData
         pd = ProviderData("ChatGPT")
         pd._rows = [LimitRow(label, pct, "") for label, pct in label_pcts]
         return pd
 
     def test_weekly_row_cannot_outrank_the_5h_row(self):
-        from aiquotabar.ui import ClaudeBar
+        from tokencoach.ui import TokenCoachApp
         pd = self._pd(("5-hour", 5), ("Weekly", 90))
-        self.assertEqual(ClaudeBar._provider_bar_pct(None, pd), 5)
+        self.assertEqual(TokenCoachApp._provider_bar_pct(None, pd), 5)
 
     def test_falls_back_to_max_when_every_row_is_weekly(self):
-        from aiquotabar.ui import ClaudeBar
+        from tokencoach.ui import TokenCoachApp
         pd = self._pd(("Only Weekly", 42))
-        self.assertEqual(ClaudeBar._provider_bar_pct(None, pd), 42)
+        self.assertEqual(TokenCoachApp._provider_bar_pct(None, pd), 42)
 
     def test_non_weekly_rows_still_take_the_max_among_themselves(self):
         # Multiple immediate rows still use the most-constrained one.
-        from aiquotabar.ui import ClaudeBar
+        from tokencoach.ui import TokenCoachApp
         pd = self._pd(("Auto", 30), ("API", 70))
-        self.assertEqual(ClaudeBar._provider_bar_pct(None, pd), 70)
+        self.assertEqual(TokenCoachApp._provider_bar_pct(None, pd), 70)
 
 
 class CodexWeeklyLimit(unittest.TestCase):
@@ -195,13 +201,13 @@ class CodexWeeklyLimit(unittest.TestCase):
         }
 
     def test_bucket_yields_both_rows(self):
-        from aiquotabar.providers import _parse_wham_bucket
+        from tokencoach.providers import _parse_wham_bucket
         rows = _parse_wham_bucket(self._bucket(80, 12), "5-hour", "Weekly")
         self.assertEqual([r.label for r in rows], ["5-hour", "Weekly"])
         self.assertEqual([r.pct for r in rows], [80, 12])
 
     def test_usage_response_surfaces_weekly_row(self):
-        from aiquotabar.providers import _parse_wham_usage
+        from tokencoach.providers import _parse_wham_usage
         data = {
             "rate_limit": self._bucket(80, 12),
             "code_review_rate_limit": None,
@@ -211,7 +217,7 @@ class CodexWeeklyLimit(unittest.TestCase):
         self.assertEqual([r.label for r in pd._rows], ["5-hour", "Weekly"])
 
     def test_missing_secondary_window_is_skipped_not_crashed(self):
-        from aiquotabar.providers import _parse_wham_bucket
+        from tokencoach.providers import _parse_wham_bucket
         rows = _parse_wham_bucket(
             {"primary_window": {"used_percent": 5, "reset_at": 1}}, "5-hour", "Weekly"
         )
@@ -225,24 +231,24 @@ class ChatGPTAuth(unittest.TestCase):
         return f"header.{encoded}.signature"
 
     def test_extracts_account_id_from_access_token(self):
-        from aiquotabar.providers import _chatgpt_account_id
+        from tokencoach.providers import _chatgpt_account_id
         token = self._jwt({
             "https://api.openai.com/auth": {"chatgpt_account_id": "account-123"},
         })
         self.assertEqual(_chatgpt_account_id({}, token), "account-123")
 
     def test_detects_expired_access_token_before_usage_request(self):
-        from aiquotabar.providers import _chatgpt_token_expired, fetch_chatgpt
+        from tokencoach.providers import _chatgpt_token_expired, fetch_chatgpt
         expired = self._jwt({"exp": 1})
         self.assertTrue(_chatgpt_token_expired(expired))
-        with patch("aiquotabar.providers._api_get", return_value={"accessToken": expired}) as get, \
-                patch("aiquotabar.providers._codex_access_token", return_value=None):
+        with patch("tokencoach.providers._api_get", return_value={"accessToken": expired}) as get, \
+                patch("tokencoach.providers._codex_access_token", return_value=None):
             result = fetch_chatgpt("session=example")
         self.assertIn("access token expired", result.error.lower())
         self.assertEqual(get.call_count, 1)
 
     def test_expired_browser_token_uses_fresh_matching_codex_token(self):
-        from aiquotabar.providers import fetch_chatgpt
+        from tokencoach.providers import fetch_chatgpt
         expired = self._jwt({
             "exp": 1,
             "https://api.openai.com/auth": {"chatgpt_account_id": "account-123"},
@@ -252,14 +258,14 @@ class ChatGPTAuth(unittest.TestCase):
             "https://api.openai.com/auth": {"chatgpt_account_id": "account-123"},
         })
         usage = {"rate_limit": {"primary_window": {"used_percent": 12}}}
-        with patch("aiquotabar.providers._api_get", side_effect=[{"accessToken": expired}, usage]) as get, \
-                patch("aiquotabar.providers._codex_access_token", return_value=fresh):
+        with patch("tokencoach.providers._api_get", side_effect=[{"accessToken": expired}, usage]) as get, \
+                patch("tokencoach.providers._codex_access_token", return_value=fresh):
             result = fetch_chatgpt("session=example")
         self.assertIsNone(result.error)
         self.assertEqual(get.call_args_list[1].args[1]["Authorization"], f"Bearer {fresh}")
 
     def test_codex_token_fallback_requires_same_account_and_fresh_token(self):
-        from aiquotabar.providers import _codex_access_token
+        from tokencoach.providers import _codex_access_token
         fresh = self._jwt({"exp": time.time() + 600})
         expired = self._jwt({"exp": 1})
         with tempfile.TemporaryDirectory() as codex_home:
@@ -276,15 +282,15 @@ class ChatGPTAuth(unittest.TestCase):
                 self.assertIsNone(_codex_access_token("account-123"))
 
     def test_cookie_detection_prefers_unexpired_browser_session(self):
-        from aiquotabar.providers import _auto_detect_chatgpt_cookies
+        from tokencoach.providers import _auto_detect_chatgpt_cookies
         expired = self._jwt({"exp": 1})
         fresh = self._jwt({"exp": time.time() + 600})
-        with patch("aiquotabar.providers._run_cookie_detection", return_value=["session=old", "session=new"]), \
-                patch("aiquotabar.providers._chatgpt_session", side_effect=[(expired, "acct"), (fresh, "acct")]):
+        with patch("tokencoach.providers._run_cookie_detection", return_value=["session=old", "session=new"]), \
+                patch("tokencoach.providers._chatgpt_session", side_effect=[(expired, "acct"), (fresh, "acct")]):
             self.assertEqual(_auto_detect_chatgpt_cookies(), "session=new")
 
     def test_fetch_sends_required_account_routing_header(self):
-        from aiquotabar.providers import fetch_chatgpt
+        from tokencoach.providers import fetch_chatgpt
         token = self._jwt({
             "https://api.openai.com/auth": {"chatgpt_account_id": "account-123"},
         })
@@ -293,7 +299,7 @@ class ChatGPTAuth(unittest.TestCase):
                 "primary_window": {"used_percent": 12, "reset_at": 4102444800},
             },
         }
-        with patch("aiquotabar.providers._api_get", side_effect=[{"accessToken": token}, usage]) as get:
+        with patch("tokencoach.providers._api_get", side_effect=[{"accessToken": token}, usage]) as get:
             result = fetch_chatgpt("session=example")
         self.assertIsNone(result.error)
         self.assertEqual(get.call_args_list[1].args[1]["ChatGPT-Account-Id"], "account-123")
@@ -301,12 +307,12 @@ class ChatGPTAuth(unittest.TestCase):
 
 class CopilotRemoval(unittest.TestCase):
     def test_not_registered_or_rendered(self):
-        from aiquotabar.providers import PROVIDER_REGISTRY, COOKIE_PROVIDERS
+        from tokencoach.providers import PROVIDER_REGISTRY, COOKIE_PROVIDERS
         self.assertNotIn("copilot_cookies", PROVIDER_REGISTRY)
         self.assertNotIn("copilot_cookies", COOKIE_PROVIDERS)
-        providers = (REPO / "aiquotabar" / "providers.py").read_text().lower()
-        ui = (REPO / "aiquotabar" / "ui.py").read_text().lower()
-        widget = (REPO / "aiquotabar" / "widget.py").read_text().lower()
+        providers = (REPO / "tokencoach" / "providers.py").read_text().lower()
+        ui = (REPO / "tokencoach" / "ui.py").read_text().lower()
+        widget = (REPO / "tokencoach" / "widget.py").read_text().lower()
         self.assertNotIn("fetch_copilot", providers)
         self.assertNotIn("github copilot", ui)
         self.assertNotIn("copilot.png", ui)
@@ -315,12 +321,12 @@ class CopilotRemoval(unittest.TestCase):
 
 class CursorRemoval(unittest.TestCase):
     def test_not_registered_or_rendered(self):
-        from aiquotabar.providers import PROVIDER_REGISTRY, COOKIE_PROVIDERS
+        from tokencoach.providers import PROVIDER_REGISTRY, COOKIE_PROVIDERS
         self.assertNotIn("cursor_cookies", PROVIDER_REGISTRY)
         self.assertNotIn("cursor_cookies", COOKIE_PROVIDERS)
-        providers = (REPO / "aiquotabar" / "providers.py").read_text().lower()
-        ui = (REPO / "aiquotabar" / "ui.py").read_text().lower()
-        widget = (REPO / "aiquotabar" / "widget.py").read_text().lower()
+        providers = (REPO / "tokencoach" / "providers.py").read_text().lower()
+        ui = (REPO / "tokencoach" / "ui.py").read_text().lower()
+        widget = (REPO / "tokencoach" / "widget.py").read_text().lower()
         self.assertNotIn("fetch_cursor", providers)
         self.assertNotIn('"  Cursor"', ui)
         self.assertNotIn('"cursor"', widget)

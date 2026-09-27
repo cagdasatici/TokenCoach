@@ -1,19 +1,19 @@
 #!/bin/bash
-# Build "Restart AIQuotaLeft.app" for the Dock.
+# Build "Restart TokenCoach.app" for the Dock.
 #
 # Built with osacompile rather than hand-rolled: an app bundle whose main
 # executable is a shell script fails to launch on macOS 26 with LaunchServices
 # error -10669. osacompile produces a bundle with a real Mach-O executable.
 set -e
-APP_NAME="Restart AIQuotaLeft"
+APP_NAME="Restart TokenCoach"
 DEST="${1:-/Applications}"
 APP="$DEST/$APP_NAME.app"
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
-SCRIPT="$SRC_DIR/restart_aiquotaleft.sh"
+SCRIPT="$SRC_DIR/restart.sh"
 
 mkdir -p "$DEST"; rm -rf "$APP"
 osacompile -o "$APP" -e "do shell script \"'$SCRIPT'\"" \
-    -e 'display notification "Restarted - look for the ◆ in your menu bar" with title "AIQuotaLeft"'
+    -e 'display notification "Restarted - look for the ◆ in your menu bar" with title "TokenCoach"'
 
 # Icon (skipped silently if the tools are unavailable)
 ICON_SRC="$SRC_DIR/assets/claude_icon.png"

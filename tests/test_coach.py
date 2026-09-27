@@ -1,6 +1,12 @@
 """Nudges, lessons, instruction-file edits, before/after, and the local
 listener's guards. Fixtures and temp files only - never the owner's real
 Claude settings or CLAUDE.md files."""
+import os as _os
+import tempfile as _tempfile
+
+# Isolate from the real data folder before anything imports tokencoach.
+_os.environ.setdefault("TOKENCOACH_DATA_DIR", _tempfile.mkdtemp(prefix="tokencoach-test-"))
+
 import json
 import os
 import pathlib
@@ -11,7 +17,7 @@ import urllib.request
 import urllib.error
 from unittest.mock import patch
 
-from aiquotabar import ledger, nudge, coach
+from tokencoach import ledger, nudge, coach
 
 
 def _transcript(path, ctx, model="claude-opus-5"):
@@ -254,7 +260,7 @@ class ImproveAndTemplates(Base):
     def test_improve_parses_and_caches(self):
         self.add_prompt("p1", "implement all the things", calls=40, cost=5.0)
         reply = 'Sure:\n{"rewrite": "Implement <item> in <file>.", "why": ["scoped"], "split": ["then tests"]}'
-        with patch("aiquotabar.optimizer.run_claude", return_value=reply) as rc:
+        with patch("tokencoach.optimizer.run_claude", return_value=reply) as rc:
             r = coach.improve_prompt(self.conn, "p1")
             self.assertEqual(r["rewrite"], "Implement <item> in <file>.")
             self.assertIn("Split into: then tests", r["why"])
@@ -264,7 +270,7 @@ class ImproveAndTemplates(Base):
 
     def test_improve_rejects_unparseable_reply(self):
         self.add_prompt("p1", "x")
-        with patch("aiquotabar.optimizer.run_claude", return_value="no json here"):
+        with patch("tokencoach.optimizer.run_claude", return_value="no json here"):
             with self.assertRaises(RuntimeError):
                 coach.improve_prompt(self.conn, "p1")
 
@@ -277,7 +283,7 @@ class ImproveAndTemplates(Base):
 
 class ListenerGuards(unittest.TestCase):
     def setUp(self):
-        from aiquotabar.server import DashboardServer
+        from tokencoach.server import DashboardServer
         self.srv = DashboardServer("s3cret", app=None, port=0).start()
         self.base = f"http://127.0.0.1:{self.srv.httpd.server_address[1]}"
 
@@ -309,3 +315,54 @@ class ListenerGuards(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EditLessons(Base):
+    def setUp(self):
+        super().setUp()
+        self.proj = self.root / "proj"
+        self.proj.mkdir()
+        p = patch.object(coach, "BACKUP_DIR", str(self.root / "backups"))
+        p.start()
+        self.addCleanup(p.stop)
+        self.add_prompt("p1", "hello", project="proj", cwd=str(self.proj), ts=time.time() - 90 * 86400)
+        coach.record_analysis_lessons(self.conn, [{
+            "title": "Warn when session exceeds 30 responses",
+            "rule": "After your 30th response in a session, suggest a fresh session.",
+            "scope": "proj", "tools": "claude", "evidence_prompts": [1], "confidence": 0.75}],
+            {1: {"session_id": "s1", "project": "proj", "source": "claude_code"}})
+        self.lid = self.conn.execute("SELECT id FROM lessons").fetchone()[0]
+
+    def test_edit_survives_refresh_and_marks_edited(self):
+        coach.edit_lesson(self.conn, self.lid, title="Warn after 10 responses",
+                          rule="After your 10th response in a session,\n suggest a fresh session.")
+        # the same proposal arrives again from a later Analyze run
+        coach.record_analysis_lessons(self.conn, [{
+            "title": "Warn when session exceeds 30 responses",
+            "rule": "After your 30th response in a session, suggest a fresh session.",
+            "scope": "proj", "tools": "claude", "evidence_prompts": [1], "confidence": 0.75}],
+            {1: {"session_id": "s1", "project": "proj", "source": "claude_code"}})
+        (l,) = coach.coach_snapshot(self.conn)["lessons"]
+        self.assertEqual(l["rule"], "After your 10th response in a session, suggest a fresh session.")
+        self.assertEqual(l["title"], "Warn after 10 responses")
+        self.assertEqual(l["edited"], 1)
+
+    def test_editing_an_applied_lesson_rewrites_the_file(self):
+        with self.assertRaises(ValueError):             # 1 session of evidence: still collecting
+            coach.apply_lesson(self.conn, self.lid, allow_review=True)
+        coach.edit_lesson(self.conn, self.lid, rule="After 30 responses, suggest a fresh session.")
+        coach.apply_lesson(self.conn, self.lid, allow_review=True)   # your wording, your call
+        coach.edit_lesson(self.conn, self.lid, rule="After 10 responses, suggest a fresh session.")
+        text = (self.proj / "CLAUDE.md").read_text()
+        self.assertIn("After 10 responses, suggest a fresh session.", text)
+        self.assertNotIn("30th", text)
+        with self.assertRaises(ValueError):
+            coach.edit_lesson(self.conn, self.lid, scope="global")
+
+    def test_retarget_and_validation(self):
+        coach.edit_lesson(self.conn, self.lid, scope="global", tools="both")
+        (l,) = coach.coach_snapshot(self.conn)["lessons"]
+        self.assertEqual((l["scope"], l["tools"]), ("global", "both"))
+        for bad in ({"rule": "   "}, {"rule": "x" * 700}, {"tools": "gemini"}, {"scope": "nope"}):
+            with self.assertRaises(ValueError):
+                coach.edit_lesson(self.conn, self.lid, **bad)

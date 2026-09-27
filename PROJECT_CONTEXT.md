@@ -1,43 +1,29 @@
-# AIQuotaLeft — current context
+# TokenCoach — current context
 
-This is a navigation snapshot, not a replacement for requirements or live evidence. Update it after a meaningful milestone; keep history in existing records.
+A navigation snapshot, not a replacement for requirements or live evidence. Update it after a meaningful milestone.
 
-## Snapshot — 2026-09-20
+## Snapshot — 2026-09-27: v1.0.0
 
-HEAD `559ca3e`, with existing `scratch.md` preserved. **42 tests passed** using the installed Python 3.12 environment. Default macOS Python 3.9 lacks rumps and cannot parse/evaluate the module's union-type usage; that failed attempt is an environment mismatch, not a passing app check. No GUI, Keychain, live provider, install, or Xcode build was exercised.
+- **Product:** macOS menu bar app. Quota left for Claude and ChatGPT (from AIQuotaBar), plus a per-prompt ledger of Claude Code, Cowork and Codex usage, a local dashboard (simple view + Advanced), Claude Code nudges, lessons written into CLAUDE.md / AGENTS.md with before/after, Improve, templates, chat-export import and a sample-data demo.
+- **Pricing:** Anthropic and OpenAI list prices in `tokencoach/ledger.py` (checked 2026-09-27; OpenAI long-context rates above 272K). Unpublished models use a labelled sibling price. User overrides: `ledger_prices`, `ledger_model_equivalents`.
+- **Layout:** install `~/.tokencoach`; data `~/Library/Application Support/TokenCoach`; logs `~/Library/Logs/TokenCoach`; LaunchAgents `io.github.cagdasatici.tokencoach{,.doctor,.widgethost}`; widget `/Applications/TokenCoachWidget.app`. Pre-rename installs are moved by `install.sh` (started automatically by `tokencoach/legacy.py` after their next auto-update); data folders move on first import of `tokencoach.config`.
+- **Distribution:** one-line `install.sh`, Homebrew formula `Formula/tokencoach.rb` (tap = this repo), `uninstall.sh`.
+- **Checks:** unit tests in `tests/`; an isolated `install.sh` run (`TOKENCOACH_NO_LAUNCH=1`); a Homebrew build from a local tap; the widget builds with Xcode.
 
-Cursor support has now been removed from the menu bar, panel, widget payload/configuration, and provider registry. Claude and Codex usage rows are named `5-hour` and `Weekly` (with Claude's optional `Weekly (Sonnet)` row). The floating menu keeps each row on one line and renders nearby reset times relatively, e.g. `5h · +1d 21:16` and `W · +7d 16:16`, falling back to a short calendar date for more distant resets; when Claude has not started a 5-hour window, it truthfully says `starts on use`. Misleading repeated high-usage sample counts are no longer presented as “limit hits,” and ETA copy clearly marks its result as a pace-based estimate. **45 tests pass** using the installed Python 3.12 environment; `git diff --check` also passes.
+## Where things are
 
-Remaining-focused menu/widget, reset formatting, ChatGPT auth fixes and vanished-icon recovery exist. Runtime provider/session compatibility and fresh-install/widget validation remain the key acceptance work. Growth/adoption was not measured.
-
-## Snapshot — 2026-09-27: usage ledger
-
-Added per-prompt usage tracking (design: [docs/plans/2026-09-27-usage-ledger-design.md](docs/plans/2026-09-27-usage-ledger-design.md)). `aiquotabar/ledger.py` incrementally indexes Claude Code (`~/.claude/projects`), Cowork (`local-agent-mode-sessions/**/audit.jsonl`) and Codex (`~/.codex/sessions`) logs into `~/Library/Application Support/AIQuotaBar/ledger.db`; `ledger_report.py` writes an interactive single-file dashboard (embedded JSON + vanilla JS, rewritten after every ledger pass, opened in Chrome from the panel's **Open dashboard** button); `optimizer.py` runs `claude -p` on demand only; `chat_import.py` imports claude.ai/ChatGPT exports as estimates. Menu (gear/right-click) and panel show today's API-equivalent spend. Quota attribution uses a running maximum per window because parallel Codex sessions report slightly stale readings; a ≥30-point drop is a reset. OpenAI prices are deliberately not bundled. **75 tests pass** (installed Python 3.12). Checked against real logs: 34k responses indexed in ~2 s; menu and panel built headlessly; dashboard checked in a browser (no console errors); one real `--optimize` run. Note: the installed copy `~/.ai-quota-bar` only picks up pushes via the 4-hourly auto-update — to deploy now, `git -C ~/.ai-quota-bar merge --ff-only origin/main` after a fetch, then `restart_aiquotaleft.sh`.
-
-## Snapshot — 2026-09-27 (later): TokenCoach coach
-
-Display name is now **TokenCoach** (`APP_NAME` in `config.py`); repo, install dir `~/.ai-quota-bar`, LaunchAgent `com.claudebar` and Homebrew formula keep their old names for now. New: `nudge.py` + `tokencoach_nudge.py` (Claude Code UserPromptSubmit hook, top-level `systemMessage`, never blocks; installed into `~/.claude/settings.json` with a backup, toggle in menu/dashboard), `coach.py` (detector + Analyze lessons, confidence capped by distinct supporting sessions, ≥0.95 ready / ≥0.70 review; managed block in CLAUDE.md/AGENTS.md with backups in `~/Library/Application Support/AIQuotaBar/backups`; before/after impact; Improve + templates), `server.py` (127.0.0.1 listener, token + Host check, serves the dashboard and its actions). Dashboard has a simple view and an Advanced switch. **97 tests pass.** Verified live: hook output accepted by `claude -p` (message display in the interactive UI still to be confirmed by the owner); Improve ran end to end in the browser; listener guards checked with curl. Not done: Codex has no prompt hook, so Codex gets lessons via AGENTS.md only.
-
-## Read only for the relevant task
-
-| Task | Entry points / authority |
+| Task | Entry points |
 |---|---|
-| Current product/attribution | `README.md`, especially “Changes in this fork” |
-| UI/conversion | `aiquotabar/ui.py`, `tests/test_remaining.py` |
-| Providers/reset/auth | `aiquotabar/providers.py`, `tests/test_reset_format.py`; fixtures only unless live checks requested |
-| Usage ledger / dashboard / coach | `aiquotabar/ledger.py`, `ledger_report.py`, `coach.py`, `nudge.py`, `server.py`, `optimizer.py`, `chat_import.py`, `tests/test_ledger.py`, `tests/test_coach.py` |
-| Widget | `AIQuotaBarWidget/`; Python source assertions do not replace an Xcode/runtime check |
-| Installation/recovery | `install.sh`, `aiquotaleft-doctor.sh`, `restart_aiquotaleft.sh` |
-| Historical growth strategy | `docs/AGENT_GUIDANCE_HISTORY.md`, `docs/planning/`; opt in for distribution tasks only |
+| Menu bar UI, panel | `tokencoach/ui.py`, `tests/test_remaining.py` |
+| Quota providers, reset times, auth | `tokencoach/providers.py`, `tests/test_reset_format.py` |
+| Ledger, pricing, quota attribution | `tokencoach/ledger.py`, `tests/test_ledger.py` |
+| Dashboard and its listener | `tokencoach/ledger_report.py`, `tokencoach/server.py` |
+| Nudges, lessons, Improve | `tokencoach/nudge.py`, `tokencoach/coach.py`, `tokencoach/optimizer.py`, `tests/test_coach.py` |
+| Sample data and README images | `tokencoach/demo.py`, `tokencoach/screenshots.py` (`--demo`, `--screenshots docs/images`) |
+| Install, repair, remove | `install.sh`, `tokencoach-doctor.sh`, `restart.sh`, `uninstall.sh`, `Formula/tokencoach.rb` |
+| Widget | `widget/` (`build_widget.sh`); Python tests don't replace an Xcode build |
 
-## Next steps (written 2026-09-21)
+## Open
 
-Checked 2026-09-21: 45 tests pass; `89fdcf7` is pushed and is the installed copy in `~/.ai-quota-bar`; the menu bar app was restarted after that commit; the widget binaries were rebuilt with the 2026-09-20 changes. The features are done. What is missing is a recorded check that the app holds up in daily use. Only the owner can do it, in about 15 minutes:
-
-1. YOU: Close the lid for at least 10 minutes, then open it and click the menu bar icon. The `Updated` time should become recent within about a minute.
-2. YOU: In Terminal, run `pkill -f '.ai-quota-bar/claude_bar.py'`. The icon should come back by itself within about 10 seconds (launchd `KeepAlive`). If it does not, run `bash ~/.ai-quota-bar/aiquotaleft-doctor.sh`.
-3. YOU: Remove the widget and add it again. It should show the same numbers as the menu bar.
-4. YOU, when it happens naturally: after a Claude or ChatGPT login expires, the app should ask you to sign in rather than keep showing old numbers.
-5. YOU, only if other people will install it: run the README install from a second macOS user account.
-
-Agent, afterwards: add one dated line here with what passed or failed, fix any failure with a regression test, and commit. Keep this fork's reliability goal ahead of inherited star-chasing tasks unless the owner asks for distribution work. Never interpret stale percentage data as current quota.
+- Nudge display in the interactive Claude Code UI: the hook output is accepted (verified with `claude -p`); confirm how it looks in a normal session.
+- Codex has no prompt hook, so Codex gets coaching through AGENTS.md lessons only.

@@ -11,6 +11,12 @@ Two bugs fixed together:
    the local UTC offset - not merely relative, wrong. A UTC+2 reader saw a
    21:00 reset labeled 19:00.
 """
+import os as _os
+import tempfile as _tempfile
+
+# Isolate from the real data folder before anything imports tokencoach.
+_os.environ.setdefault("TOKENCOACH_DATA_DIR", _tempfile.mkdtemp(prefix="tokencoach-test-"))
+
 import pathlib
 import sys
 import unittest
@@ -19,7 +25,7 @@ from datetime import datetime, timedelta, timezone
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from aiquotabar.providers import _fmt_reset  # noqa: E402
+from tokencoach.providers import _fmt_reset  # noqa: E402
 
 
 def _iso(delta: timedelta) -> str:
@@ -119,7 +125,7 @@ class Disambiguation(unittest.TestCase):
 
 class SharedFormatterSource(unittest.TestCase):
     def test_no_hand_rolled_relative_string_left_in_source(self):
-        src = (REPO / "aiquotabar" / "providers.py").read_text()
+        src = (REPO / "tokencoach" / "providers.py").read_text()
         self.assertNotIn('f"resets in {days}d {hours}h"', src)
         self.assertNotIn('f"resets in {hours}h"', src)
 

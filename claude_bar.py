@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""AIQuotaBar -- backwards-compatible entry point.
+"""Pre-rename entry point, kept so older installs keep starting.
 
-The real code lives in the aiquotabar/ package.
-This shim keeps `python3 claude_bar.py` working for
-install.sh, LaunchAgent, and existing users.
+Installs made before the app was renamed TokenCoach launch this file. It runs
+TokenCoach, which then moves the install to ~/.tokencoach by itself (see
+tokencoach/legacy.py). New installs use tokencoach.py.
 """
-from aiquotabar.__main__ import main
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from tokencoach.__main__ import main  # noqa: E402
 
 if __name__ == "__main__":
     main()
