@@ -322,12 +322,10 @@ print(sum(1 for w in info if w.get('kCGWindowOwnerPID') == pid))
         if [ -z "$icon_windows" ]; then
             say_ok "menu bar icon check skipped (Quartz unavailable)"
         elif [ "$icon_windows" = "0" ]; then
-            if repairing; then
-                launchctl kickstart -k "gui/$UID_NUM/$BAR_LABEL" 2>/dev/null
-                say_fixed "menu bar icon had vanished (process alive, no window) - restarted"
-            else
-                say_failed "menu bar icon vanished (process alive, no window)"
-            fi
+            # Recent macOS versions draw status items in a system process, so a
+            # healthy app can own zero windows. Restarting on that signal put
+            # the app in a restart loop; report it, never act on it.
+            say_ok "menu bar icon check inconclusive (macOS doesn't attribute status items to the app)"
         else
             say_ok "menu bar icon present ($icon_windows window(s))"
         fi
