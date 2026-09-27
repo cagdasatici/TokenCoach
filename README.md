@@ -111,6 +111,11 @@ needs Xcode (the installer builds it when Xcode is present).
 
 **Uninstall:** `bash ~/.tokencoach/uninstall.sh` (add `--purge` to delete your data too).
 
+**Upgrading from AIQuotaBar or AIQuotaLeft:** run the one-line installer above. It stops the
+old launch agents, watchdog and widget, moves your settings and quota history into TokenCoach,
+and removes the old `~/.ai-quota-bar` folder. Your data is kept. AIQuotaLeft installs that
+auto-update make this move by themselves on their next start.
+
 ---
 
 ## What the numbers mean
@@ -162,7 +167,8 @@ like its closest published sibling and labelled *estimated*. Override anything i
 - **Quota bars empty:** log in at claude.ai / chatgpt.com in your browser, then
   **Auto-detect from Browser** in the ⚙ menu.
 - **Dashboard buttons do nothing:** open it from the menu bar icon; a saved copy is read-only.
-- **Command line:** `python3 ~/.tokencoach/tokencoach.py --help` (`--ledger`, `--dashboard`,
+- **Command line:** `tokencoach --help` with Homebrew, otherwise
+  `~/.tokencoach/.venv/bin/python ~/.tokencoach/tokencoach.py --help` (`--ledger`, `--dashboard`,
   `--optimize`, `--import-export FILE`, `--demo`).
 
 ## Credits

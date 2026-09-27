@@ -2,7 +2,9 @@
 
 import sys
 
-USAGE = """usage: tokencoach.py [option]
+USAGE = """usage: tokencoach [option]
+  (without Homebrew: ~/.tokencoach/.venv/bin/python ~/.tokencoach/tokencoach.py [option])
+
   (none)                 run the menu bar app
   --history, -H          print quota history
   --ledger               index local Claude Code / Cowork / Codex logs, print today's spend
