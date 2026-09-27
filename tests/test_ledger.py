@@ -356,7 +356,7 @@ class ReportAndOptimizer(LedgerTestCase):
     def test_dashboard_renders_and_embeds_data_safely(self):
         from aiquotabar.ledger_report import build_report, dashboard_data
         empty = build_report(self.conn, {})
-        self.assertIn("<title>AI Usage Dashboard</title>", empty)
+        self.assertIn("<title>TokenCoach</title>", empty)
         self._seed()
         _jl(self.root / "claude/p/s1.jsonl", [_cc_user("u9", "</script><b>x", "2026-09-27T10:00:00Z")], mode="a")
         self.ingest()

@@ -13,7 +13,7 @@ import urllib.parse
 from datetime import datetime, timezone, timedelta
 
 from aiquotabar.config import (
-    log, load_config, save_config, notif_enabled, set_notif,
+    APP_NAME, log, load_config, save_config, notif_enabled, set_notif,
     REFRESH_INTERVALS, DEFAULT_REFRESH,
     WARN_THRESHOLD, CRIT_THRESHOLD, PACING_ALERT_MINUTES,
     UPDATE_CHECK_INTERVAL, HISTORY_COLORS,
@@ -1389,7 +1389,7 @@ class _SharePopover:
             pb.setData_forType_(png_data, "public.png")
 
             log.info("Panel screenshot copied to clipboard")
-            _notify("AIQuotaBar", "Copied!", "Panel screenshot copied to clipboard")
+            _notify(APP_NAME, "Copied!", "Panel screenshot copied to clipboard")
         except Exception:
             log.debug("_SharePopover.copy_image failed", exc_info=True)
 
@@ -1839,7 +1839,7 @@ class _UsagePanel:
         """Render: 'AIQuotaBar' title + gear + share buttons."""
         # Title
         title = NSTextField.alloc().initWithFrame_(NSMakeRect(x, y, w - 60, h))
-        title.setStringValue_("AIQuotaBar")
+        title.setStringValue_(APP_NAME)
         title.setBezeled_(False)
         title.setDrawsBackground_(False)
         title.setEditable_(False)
@@ -2083,6 +2083,16 @@ class ClaudeBar(rumps.App):
         self._ledger_summary: dict | None = None
         self._ledger_status = ""
         self._optimizer_running = False
+        self._last_lesson_scan = 0.0
+        self._dashboard = None
+        try:
+            from aiquotabar.server import DashboardServer, get_token
+            with self._config_lock:
+                token = get_token(self.config)
+            self._dashboard = DashboardServer(token, app=self).start()
+        except Exception:
+            log.exception("dashboard listener failed to start; buttons will be read-only")
+        self._sync_nudges()
 
         if not _is_login_item():
             _add_login_item()
@@ -2202,7 +2212,7 @@ class ClaudeBar(rumps.App):
             items.append(None)
 
         # -- Spend (usage ledger) ---------------------------------------------
-        items.append(_mi("  Spend (API-equivalent)"))
+        items.append(_mi(f"  {APP_NAME} \u00b7 spend (API-equivalent)"))
         for line in _ledger_menu_lines(self._ledger_summary, self._ledger_status):
             items.append(_mi(line))
         items.append(rumps.MenuItem("Open Dashboard \u2197", callback=self._open_dashboard))
@@ -2212,6 +2222,13 @@ class ClaudeBar(rumps.App):
         ))
         items.append(rumps.MenuItem("Import Chat Export\u2026", callback=self._import_chat_export))
         items.append(rumps.MenuItem("Set Plan Prices\u2026", callback=self._set_plan_prices))
+        try:
+            from aiquotabar.nudge import is_installed as _nudges_on
+            nudge_item = rumps.MenuItem("Nudges in Claude Code", callback=self._toggle_nudges)
+            nudge_item._menuitem.setState_(1 if _nudges_on() else 0)
+            items.append(nudge_item)
+        except Exception:
+            log.debug("nudge menu item failed", exc_info=True)
         items.append(None)
 
         # -- Other API providers ----------------------------------------------
@@ -2488,13 +2505,13 @@ class ClaudeBar(rumps.App):
             # Subsequent launches -- brief notification
             if widget_ok:
                 _notify(
-                    "AIQuotaBar",
+                    APP_NAME,
                     "Running",
                     "Menu bar and desktop widget are synced.",
                 )
             else:
                 _notify(
-                    "AIQuotaBar",
+                    APP_NAME,
                     "Running",
                     (
                         "Tracking usage from your menu bar. "
@@ -2566,6 +2583,13 @@ class ClaudeBar(rumps.App):
                 counts = _ledger.ingest(conn, overrides=overrides, time_budget=30)
                 self._ledger_summary = _ledger.today_summary(conn)
                 if counts["complete"]:
+                    if time.time() - self._last_lesson_scan > 3600:
+                        try:
+                            from aiquotabar.coach import detect_lessons
+                            detect_lessons(conn)
+                            self._last_lesson_scan = time.time()
+                        except Exception:
+                            log.exception("lesson detection failed")
                     try:
                         from aiquotabar.ledger_report import write_report
                         write_report(conn, self.config)
@@ -2593,15 +2617,19 @@ class ClaudeBar(rumps.App):
         def work():
             try:
                 from aiquotabar.ledger_report import write_report, open_file
+                browser = self.config.get("dashboard_browser")
+                if self._dashboard is not None:
+                    open_file(self._dashboard.url, browser)
+                    return
                 conn = _ledger.open_ledger()   # own connection: safe across threads
                 try:
                     path = write_report(conn, self.config)
                 finally:
                     conn.close()
-                open_file(path, self.config.get("dashboard_browser"))
+                open_file(path, browser)
             except Exception:
                 log.exception("dashboard failed")
-                _notify("AIQuotaLeft", "Could not open the dashboard", "See ~/.claude_bar.log")
+                _notify(APP_NAME, "Could not open the dashboard", "See ~/.claude_bar.log")
         threading.Thread(target=work, daemon=True).start()
 
     def _set_plan_prices(self, _sender):
@@ -2623,11 +2651,45 @@ class ClaudeBar(rumps.App):
             try:
                 plans[key] = float(ans)
             except ValueError:
-                _notify("AIQuotaLeft", "Not a number", f"{name} price left unchanged")
+                _notify(APP_NAME, "Not a number", f"{name} price left unchanged")
         with self._config_lock:
             self.config["ledger_plans"] = plans
             save_config(self.config)
         self._schedule_ledger()
+
+    def _sync_nudges(self):
+        """Keep the Claude Code hook in line with the setting (on unless the
+        person turned it off), pointing at this install."""
+        try:
+            from aiquotabar import nudge
+            want = (self.config.get("nudges") or {}).get("level", nudge.DEFAULT_LEVEL) != "off"
+            install_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if want and not nudge.is_installed():
+                nudge.install(install_dir)
+                log.info("Claude Code nudge hook installed")
+        except Exception:
+            log.exception("nudge hook sync failed")
+
+    def set_nudges(self, on: bool):
+        from aiquotabar import nudge
+        install_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with self._config_lock:
+            cfg = self.config.setdefault("nudges", {})
+            cfg["level"] = nudge.DEFAULT_LEVEL if on else "off"
+            save_config(self.config)
+        if on:
+            nudge.install(install_dir)
+        else:
+            nudge.uninstall()
+
+    def _toggle_nudges(self, sender):
+        from aiquotabar import nudge
+        try:
+            self.set_nudges(not nudge.is_installed())
+            sender._menuitem.setState_(1 if nudge.is_installed() else 0)
+        except Exception:
+            log.exception("toggle nudges failed")
+            _notify(APP_NAME, "Could not change Claude Code settings", "See ~/.claude_bar.log")
 
     def _analyze_usage(self, _sender):
         if self._optimizer_running:
@@ -2640,17 +2702,19 @@ class ClaudeBar(rumps.App):
         def work():
             try:
                 from aiquotabar.optimizer import run_optimizer
+                from aiquotabar.coach import detect_lessons
                 from aiquotabar.ledger_report import open_file
                 conn = _ledger.open_ledger()
                 try:
+                    detect_lessons(conn)
                     path = run_optimizer(conn)
                 finally:
                     conn.close()
                 open_file(path)
-                _notify("AIQuotaLeft", "Usage advice is ready", "Opened in your browser")
+                _notify(APP_NAME, "Usage advice is ready", "Opened in your browser")
             except Exception as e:
                 log.exception("optimizer failed")
-                _notify("AIQuotaLeft", "Usage analysis failed", str(e)[:200])
+                _notify(APP_NAME, "Usage analysis failed", str(e)[:200])
             finally:
                 self._optimizer_running = False
                 self._ledger_status = ""
@@ -2670,11 +2734,11 @@ class ClaudeBar(rumps.App):
                     res = import_export(conn, path)
                 finally:
                     conn.close()
-                _notify("AIQuotaLeft", f"Imported {res['prompts']} chat prompts",
+                _notify(APP_NAME, f"Imported {res['prompts']} chat prompts",
                         f"{res['conversations']} conversations from {res['file']} (token counts estimated)")
             except Exception as e:
                 log.exception("chat import failed")
-                _notify("AIQuotaLeft", "Chat import failed", str(e)[:200])
+                _notify(APP_NAME, "Chat import failed", str(e)[:200])
         threading.Thread(target=work, daemon=True).start()
 
     def _schedule_fetch(self):
@@ -2779,7 +2843,7 @@ class ClaudeBar(rumps.App):
                         self._schedule_fetch()
                     else:
                         _notify(
-                            "Claude Usage Bar",
+                            APP_NAME,
                             "Session expired \u2014 please update your cookie",
                             "Click: Set Session Cookie\u2026 or Auto-detect from Browser",
                         )
@@ -2815,7 +2879,7 @@ class ClaudeBar(rumps.App):
                 self._warned_pcts.discard(warn_key)
                 self._warned_pcts.discard(crit_key)
                 _notify(
-                    "Claude Usage Bar \u2705",
+                    f"{APP_NAME} \u2705",
                     f"{row.label} has reset!",
                     f"{_remaining(row.pct)}% left \u2014 you're good to go.",
                 )
@@ -2824,14 +2888,14 @@ class ClaudeBar(rumps.App):
                 if row.pct >= CRIT_THRESHOLD and crit_key not in self._warned_pcts:
                     self._warned_pcts.add(crit_key)
                     _notify(
-                        "Claude Usage Bar \U0001f534",
+                        f"{APP_NAME} \U0001f534",
                         f"{row.label}: only {_remaining(row.pct)}% left!",
                         row.reset_str or "Limit almost reached",
                     )
                 elif row.pct >= WARN_THRESHOLD and warn_key not in self._warned_pcts:
                     self._warned_pcts.add(warn_key)
                     _notify(
-                        "Claude Usage Bar \U0001f7e1",
+                        f"{APP_NAME} \U0001f7e1",
                         f"{row.label}: {_remaining(row.pct)}% left",
                         row.reset_str or "Approaching limit",
                     )
@@ -2867,7 +2931,7 @@ class ClaudeBar(rumps.App):
                     self._warned_pcts.discard(warn_key)
                     self._warned_pcts.discard(crit_key)
                     _notify(
-                        "Claude Usage Bar \u2705",
+                        f"{APP_NAME} \u2705",
                         f"{pname} {row.label} has reset!",
                         f"{_remaining(row.pct)}% left \u2014 you're good to go.",
                     )
@@ -2876,14 +2940,14 @@ class ClaudeBar(rumps.App):
                     if row.pct >= CRIT_THRESHOLD and crit_key not in self._warned_pcts:
                         self._warned_pcts.add(crit_key)
                         _notify(
-                            "Claude Usage Bar \U0001f534",
+                            f"{APP_NAME} \U0001f534",
                             f"{pname} {row.label}: only {_remaining(row.pct)}% left!",
                             row.reset_str or "Limit almost reached",
                         )
                     elif row.pct >= WARN_THRESHOLD and warn_key not in self._warned_pcts:
                         self._warned_pcts.add(warn_key)
                         _notify(
-                            "Claude Usage Bar \U0001f7e1",
+                            f"{APP_NAME} \U0001f7e1",
                             f"{pname} {row.label}: {_remaining(row.pct)}% left",
                             row.reset_str or "Approaching limit",
                         )
@@ -2918,7 +2982,7 @@ class ClaudeBar(rumps.App):
                 if hkey not in self._pacing_alerted:
                     self._pacing_alerted.add(hkey)
                     _notify(
-                        "Claude Usage Bar \u23f1",
+                        f"{APP_NAME} \u23f1",
                         f"Slow down \u2014 {label} limit in ~{_fmt_eta(eta)}",
                         "At your current pace you'll hit the cap soon.",
                     )
@@ -3192,16 +3256,16 @@ class ClaudeBar(rumps.App):
                         save_config(self.config)
                         if cfg_key == "chatgpt_cookies":
                             self._chatgpt_cookie_retry_after = 0.0
-                        _notify("Claude Usage Bar", f"{name} cookies updated \u2713", "Fetching usage\u2026")
+                        _notify(APP_NAME, f"{name} cookies updated \u2713", "Fetching usage\u2026")
                         self._schedule_fetch()
                     else:
-                        _notify("Claude Usage Bar", f"Could not find {name} session",
+                        _notify(APP_NAME, f"Could not find {name} session",
                                 f"Make sure you are logged into {name} in your browser.")
                 return
             # API key-based
             current = self.config.get(cfg_key, "")
             key = _ask_text(
-                title=f"Claude Usage Bar \u2014 {name}",
+                title=f"{APP_NAME} \u2014 {name}",
                 prompt=f"Paste your {name} API key.\nLeave blank to remove.",
                 default=current,
             )
@@ -3380,7 +3444,7 @@ class ClaudeBar(rumps.App):
         text = _clipboard_text()
         if not text or ("sessionKey" not in text and "=" not in text):
             _notify(
-                "Claude Usage Bar",
+                APP_NAME,
                 "Nothing useful in clipboard",
                 "Copy your cookie string from Chrome DevTools first.",
             )
@@ -3391,7 +3455,7 @@ class ClaudeBar(rumps.App):
         self._auth_fail_count = 0
         self._schedule_fetch()
         _notify(
-            "Claude Usage Bar",
+            APP_NAME,
             "Cookie updated from clipboard \u2713",
             "Fetching usage data\u2026",
         )
@@ -3405,12 +3469,12 @@ class ClaudeBar(rumps.App):
             _remove_login_item()
             self._login_item_cached = False
             sender._menuitem.setState_(0)
-            _notify("Claude Usage Bar", "Removed from Login Items", "")
+            _notify(APP_NAME, "Removed from Login Items", "")
         else:
             _add_login_item()
             self._login_item_cached = True
             sender._menuitem.setState_(1)
-            _notify("Claude Usage Bar", "Added to Login Items", "Will launch automatically on login")
+            _notify(APP_NAME, "Added to Login Items", "Will launch automatically on login")
 
     def _try_auto_detect(self):
         """Background: silently try to grab cookies from the browser on first run."""
@@ -3419,7 +3483,7 @@ class ClaudeBar(rumps.App):
             self.config["cookie_str"] = cookie_str
             save_config(self.config)
             _notify(
-                "Claude Usage Bar",
+                APP_NAME,
                 "Cookies auto-detected from your browser \u2713",
                 "Fetching usage data\u2026",
             )
@@ -3429,7 +3493,7 @@ class ClaudeBar(rumps.App):
         """Menu item: manually trigger auto-detect (runs in background thread)."""
         if not _BROWSER_COOKIE3_OK:
             _notify(
-                "Claude Usage Bar",
+                APP_NAME,
                 "browser-cookie3 not installed",
                 "Run: pip install browser-cookie3",
             )
@@ -3451,11 +3515,11 @@ class ClaudeBar(rumps.App):
                 save_config(self.config)
             self._warned_pcts.clear()
             self._auth_fail_count = 0
-            _notify("Claude Usage Bar", "Cookies auto-detected \u2713", "Fetching usage data\u2026")
+            _notify(APP_NAME, "Cookies auto-detected \u2713", "Fetching usage data\u2026")
             self._schedule_fetch()
         else:
             _notify(
-                "Claude Usage Bar",
+                APP_NAME,
                 "Could not find claude.ai session in any browser",
                 "Make sure you are logged in to claude.ai in Chrome, Firefox, or Safari.",
             )

@@ -14,6 +14,10 @@ Remaining-focused menu/widget, reset formatting, ChatGPT auth fixes and vanished
 
 Added per-prompt usage tracking (design: [docs/plans/2026-09-27-usage-ledger-design.md](docs/plans/2026-09-27-usage-ledger-design.md)). `aiquotabar/ledger.py` incrementally indexes Claude Code (`~/.claude/projects`), Cowork (`local-agent-mode-sessions/**/audit.jsonl`) and Codex (`~/.codex/sessions`) logs into `~/Library/Application Support/AIQuotaBar/ledger.db`; `ledger_report.py` writes an interactive single-file dashboard (embedded JSON + vanilla JS, rewritten after every ledger pass, opened in Chrome from the panel's **Open dashboard** button); `optimizer.py` runs `claude -p` on demand only; `chat_import.py` imports claude.ai/ChatGPT exports as estimates. Menu (gear/right-click) and panel show today's API-equivalent spend. Quota attribution uses a running maximum per window because parallel Codex sessions report slightly stale readings; a ≥30-point drop is a reset. OpenAI prices are deliberately not bundled. **75 tests pass** (installed Python 3.12). Checked against real logs: 34k responses indexed in ~2 s; menu and panel built headlessly; dashboard checked in a browser (no console errors); one real `--optimize` run. Note: the installed copy `~/.ai-quota-bar` only picks up pushes via the 4-hourly auto-update — to deploy now, `git -C ~/.ai-quota-bar merge --ff-only origin/main` after a fetch, then `restart_aiquotaleft.sh`.
 
+## Snapshot — 2026-09-27 (later): TokenCoach coach
+
+Display name is now **TokenCoach** (`APP_NAME` in `config.py`); repo, install dir `~/.ai-quota-bar`, LaunchAgent `com.claudebar` and Homebrew formula keep their old names for now. New: `nudge.py` + `tokencoach_nudge.py` (Claude Code UserPromptSubmit hook, top-level `systemMessage`, never blocks; installed into `~/.claude/settings.json` with a backup, toggle in menu/dashboard), `coach.py` (detector + Analyze lessons, confidence capped by distinct supporting sessions, ≥0.95 ready / ≥0.70 review; managed block in CLAUDE.md/AGENTS.md with backups in `~/Library/Application Support/AIQuotaBar/backups`; before/after impact; Improve + templates), `server.py` (127.0.0.1 listener, token + Host check, serves the dashboard and its actions). Dashboard has a simple view and an Advanced switch. **97 tests pass.** Verified live: hook output accepted by `claude -p` (message display in the interactive UI still to be confirmed by the owner); Improve ran end to end in the browser; listener guards checked with curl. Not done: Codex has no prompt hook, so Codex gets lessons via AGENTS.md only.
+
 ## Read only for the relevant task
 
 | Task | Entry points / authority |
@@ -21,7 +25,7 @@ Added per-prompt usage tracking (design: [docs/plans/2026-09-27-usage-ledger-des
 | Current product/attribution | `README.md`, especially “Changes in this fork” |
 | UI/conversion | `aiquotabar/ui.py`, `tests/test_remaining.py` |
 | Providers/reset/auth | `aiquotabar/providers.py`, `tests/test_reset_format.py`; fixtures only unless live checks requested |
-| Usage ledger / report / optimizer | `aiquotabar/ledger.py`, `ledger_report.py`, `optimizer.py`, `chat_import.py`, `tests/test_ledger.py` |
+| Usage ledger / dashboard / coach | `aiquotabar/ledger.py`, `ledger_report.py`, `coach.py`, `nudge.py`, `server.py`, `optimizer.py`, `chat_import.py`, `tests/test_ledger.py`, `tests/test_coach.py` |
 | Widget | `AIQuotaBarWidget/`; Python source assertions do not replace an Xcode/runtime check |
 | Installation/recovery | `install.sh`, `aiquotaleft-doctor.sh`, `restart_aiquotaleft.sh` |
 | Historical growth strategy | `docs/AGENT_GUIDANCE_HISTORY.md`, `docs/planning/`; opt in for distribution tasks only |

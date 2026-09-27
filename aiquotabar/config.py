@@ -15,6 +15,10 @@ _log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message
 logging.basicConfig(handlers=[_log_handler], level=logging.DEBUG)
 log = logging.getLogger("aiquotabar")
 
+# ── identity ─────────────────────────────────────────────────────────────────
+# Display name. A fork of AIQuotaBar; see README for attribution.
+APP_NAME = "TokenCoach"
+
 # ── paths & thresholds ───────────────────────────────────────────────────────
 
 CONFIG_FILE = os.path.expanduser("~/.claude_bar_config.json")

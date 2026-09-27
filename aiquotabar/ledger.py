@@ -152,6 +152,45 @@ CREATE TABLE IF NOT EXISTS quota_samples (
     pct      REAL NOT NULL,
     PRIMARY KEY (provider, window, ts)
 );
+CREATE TABLE IF NOT EXISTS nudges (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts         REAL NOT NULL,
+    session_id TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    message    TEXT NOT NULL,
+    project    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_nudges_session ON nudges(session_id, ts);
+CREATE TABLE IF NOT EXISTS lessons (
+    id          TEXT PRIMARY KEY,
+    created     REAL NOT NULL,
+    updated     REAL NOT NULL,
+    origin      TEXT NOT NULL,            -- 'detector' or 'analysis'
+    scope       TEXT NOT NULL,            -- 'global' or a project name
+    tools       TEXT NOT NULL,            -- 'claude', 'codex' or 'both'
+    title       TEXT NOT NULL,
+    rule        TEXT NOT NULL,            -- the line written into CLAUDE.md / AGENTS.md
+    evidence    TEXT NOT NULL,
+    evidence_n  INTEGER NOT NULL,
+    confidence  REAL NOT NULL,
+    saving      TEXT,
+    status      TEXT NOT NULL DEFAULT 'open',   -- open | applied | dismissed
+    applied_ts  REAL,
+    applied_files TEXT
+);
+CREATE TABLE IF NOT EXISTS improvements (
+    prompt_id  TEXT PRIMARY KEY,
+    ts         REAL NOT NULL,
+    rewrite    TEXT NOT NULL,
+    why        TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS templates (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts         REAL NOT NULL,
+    title      TEXT NOT NULL,
+    text       TEXT NOT NULL,
+    source_prompt_id TEXT
+);
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -171,8 +210,20 @@ def open_ledger(path: str = LEDGER_DB) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     conn.commit()
     return conn
+
+
+def _migrate(conn):
+    """Add columns introduced after the first release."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(prompts)")}
+    if "cwd" not in cols:
+        conn.execute("ALTER TABLE prompts ADD COLUMN cwd TEXT")
+    if _meta_get(conn, "cwd_backfilled") is None:
+        # Re-read every log once so existing prompts get their folder path.
+        conn.execute("UPDATE files SET offset = 0, state = '{}'")
+        _meta_set(conn, "cwd_backfilled", "1")
 
 
 def _meta_get(conn, key, default=None):
@@ -310,7 +361,7 @@ def parse_claude_code(lines, state, overrides=None):
             text = _text_of((d.get("message") or {}).get("content"))
             if _is_real_prompt(text) and d.get("uuid"):
                 prompts.append({
-                    "id": f"cc:{d['uuid']}", "source": "claude_code",
+                    "id": f"cc:{d['uuid']}", "source": "claude_code", "cwd": state.get("cwd"),
                     "session_id": session, "project": project,
                     "ts": _ts(d.get("timestamp")) or time.time(), "text": text,
                 })
@@ -398,7 +449,7 @@ def parse_codex(lines, state, overrides=None):
                 if _is_real_prompt(text):
                     pid = f"codex:{session}:{p.get('turn_id')}:{item.get('id')}"
                     prompts.append({
-                        "id": pid, "source": "codex", "session_id": session,
+                        "id": pid, "source": "codex", "session_id": session, "cwd": state.get("cwd"),
                         "project": project, "ts": ts, "text": text,
                     })
             continue
@@ -448,9 +499,11 @@ _CALL_COLS = ("id", "source", "session_id", "project", "model", "ts",
 
 def _insert(conn, prompts, calls, samples):
     conn.executemany(
-        "INSERT OR IGNORE INTO prompts (id, source, session_id, project, ts, text, estimated) "
-        "VALUES (:id, :source, :session_id, :project, :ts, :text, :estimated)",
-        [{"estimated": 0, **p} for p in prompts],
+        "INSERT INTO prompts (id, source, session_id, project, ts, text, estimated, cwd) "
+        "VALUES (:id, :source, :session_id, :project, :ts, :text, :estimated, :cwd) "
+        "ON CONFLICT(id) DO UPDATE SET cwd = excluded.cwd "
+        "WHERE prompts.cwd IS NULL AND excluded.cwd IS NOT NULL",
+        [{"estimated": 0, "cwd": None, **p} for p in prompts],
     )
     conn.executemany(
         # A response can be logged more than once (one line per content

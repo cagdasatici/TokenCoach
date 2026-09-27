@@ -1,4 +1,7 @@
-# AIQuotaLeft
+# TokenCoach
+
+*Formerly AIQuotaLeft.* Tracks every Claude and ChatGPT prompt, coaches you to spend less
+quota for the same results, and shows what you have left in the menu bar.
 
 > A fork of [AIQuotaBar](https://github.com/yagcioglutoprak/AIQuotaBar) by
 > [Toprak Yagcioglu](https://github.com/yagcioglutoprak), whose work this almost
@@ -124,28 +127,32 @@ cd AIQuotaBarWidget && ./build_widget.sh
 
 ---
 
-## Where did it go? Usage ledger
+## Coach: spend less for the same results
 
-AIQuotaLeft also reads the transcripts that **Claude Code, Cowork and Codex** already
-write on your Mac and keeps a local ledger of every prompt: tokens, model, project,
-API-equivalent cost and how much quota it used. Nothing leaves your machine.
+TokenCoach reads the transcripts that **Claude Code, Cowork and Codex** already write on
+your Mac and keeps a local ledger of every prompt: tokens, model, project, API-equivalent
+cost and how much quota it used. Nothing leaves your machine, except when you ask for an
+analysis or a prompt rewrite (sent to Claude through your own `claude` CLI).
 
-- **Menu / panel:** today's spend, top project and most expensive prompt, and an
-  **Open dashboard ↗** button (opens in Chrome if installed, else your default browser).
-- **Dashboard** — one local HTML page, refreshed by the app every few minutes:
-  time range (today / 7 / 30 / 90 days / all), tool, project and model filters;
-  totals with change vs the previous period; a timeline by tool ($, tokens, prompts or
-  quota); quota used over time for Claude and Codex; a weekday × hour activity map;
-  breakdowns by project, model and tool (click to filter); the most expensive sessions;
-  searchable prompts with full text; this month's spend against your plan price
-  (**Set Plan Prices…** in the ⚙ menu); and the latest usage advice.
-- **Analyze My Usage…** — on demand only. Sends a digest of your costliest prompts to
-  your own `claude` CLI (Sonnet) and opens concrete advice: habit changes, cheaper model
-  fits and prompt rewrites. It uses a little of your Claude quota each time, and the
-  next run checks whether the previous advice was followed.
+- **Nudges in Claude Code.** Before a prompt runs, TokenCoach can show a one-line tip in
+  Claude Code: a session that re-reads 300k tokens on every reply, a broad "implement
+  everything" ask (compared with your own history), a quick question on an expensive
+  model, a prompt similar to an earlier expensive one, or nearly no quota left. It never
+  blocks or rewrites your prompt. Toggle it in the menu (**Nudges in Claude Code**).
+- **Lessons → your CLAUDE.md / AGENTS.md.** Patterns that repeat across sessions become
+  lessons with a confidence score that is capped by how much evidence supports them. At
+  **95%+** they can be applied in one click; below that you review the evidence and decide;
+  with little evidence they keep collecting. Applied lessons live in a clearly marked
+  block (the original file is backed up first) and can be removed from the dashboard.
+- **Before / after.** Every applied lesson shows what changed afterwards: $ and agent
+  responses per prompt, session length and peak context.
+- **Improve.** Any costly prompt gets a tighter rewrite you can copy or save as a template.
+- **Dashboard.** Click the menu bar icon → **Open dashboard ↗** (Chrome if installed).
+  The simple view shows totals, the coach, a timeline and your costliest prompts;
+  **Advanced** adds filters, quota over time, a weekday × hour map, breakdowns, sessions
+  and every prompt. It is served only on `127.0.0.1` with a per-install key.
 - **Import Chat Export…** — claude.ai and ChatGPT web chats are not stored locally;
-  import their data export to include them. Their token counts are **estimates**
-  (text length only; system prompts, files and hidden reasoning are not in exports).
+  import their data export to include them. Their token counts are **estimates**.
 
 What the numbers mean:
 
@@ -163,7 +170,8 @@ is worth against API prices.
 "API-equivalent $" is what the same tokens would cost on the provider's API. On a
 subscription you pay a flat fee, so treat it as a yardstick, not a bill.
 
-From a terminal: `python3 claude_bar.py --ledger | --dashboard | --optimize | --import-export FILE`.
+From a terminal: `python3 claude_bar.py --ledger | --dashboard | --optimize | --import-export FILE`
+(`--dashboard` writes a read-only copy; buttons work in the copy the app serves).
 
 ---
 
@@ -269,9 +277,9 @@ aren't specific to the changes below belong upstream.
   compile to `Optional.none` and leave the widget blank.
 - `build_widget.sh` drops the build-directory copy from LaunchServices, so the system
   can't host the widget from a stale build instead of `/Applications`.
-- Usage ledger: per-prompt tokens, API-equivalent cost and quota from local Claude Code,
-  Cowork and Codex logs, an HTML usage report, on-demand usage advice, and chat-export
-  import.
+- Renamed TokenCoach: per-prompt ledger for Claude Code, Cowork and Codex; dashboard;
+  Claude Code nudges; lessons written to CLAUDE.md / AGENTS.md with before/after;
+  prompt rewrites and templates; chat-export import.
 
 ## License
 

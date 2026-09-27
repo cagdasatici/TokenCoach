@@ -50,7 +50,19 @@ open-ended exploration), give the original gist and a tighter rewrite.
 Where a cheaper model or a different tool would have done the job.
 
 {followup}
-Be specific and brief. Do not repeat the digest back. No preamble."""
+Be specific and brief. Do not repeat the digest back. No preamble.
+
+After the report, output one fenced ```json block with lessons that should become standing \
+instructions for the coding agent (they will be written into CLAUDE.md / AGENTS.md, which the \
+agent reads every session). Only include lessons the agent itself can act on (e.g. "list the \
+concrete items before starting a broad request", "ask for file paths instead of searching the \
+whole repo"), not habits only the person can change (like picking a model). Format:
+{{"lessons": [{{"title": "short name", "rule": "one imperative sentence for the agent",
+  "scope": "<project name from the digest> or global", "tools": "claude|codex|both",
+  "evidence_prompts": [<prompt numbers from the digest that show the pattern>],
+  "confidence": <0..1, how sure you are this rule would reduce cost without hurting results>,
+  "saving": "rough saving estimate"}}]}}
+Use an empty list when nothing qualifies."""
 
 FOLLOWUP = """## Did last time's advice stick?
 Compare against the previous report below and say which recommendations were followed, \
@@ -113,16 +125,60 @@ def build_digest(conn, days: int = 7, limit: int = DIGEST_PROMPTS) -> str:
     return "\n".join(lines)
 
 
+def prompt_scopes(conn, days: int = 7, limit: int = DIGEST_PROMPTS) -> dict[int, dict]:
+    """Digest prompt number -> its session and project, to check cited evidence."""
+    since = ledger._day_start(days - 1)
+    prompts = ledger.top_prompts(conn, since, limit=limit, exclude_project=ledger.OPTIMIZER_PROJECT)
+    return {i: {"session_id": p["session_id"], "project": p["project"], "source": p["source"]}
+            for i, p in enumerate(prompts, 1)}
+
+
 def latest_report() -> str | None:
     files = sorted(glob.glob(os.path.join(REPORT_DIR, "optimizer-*.md")))
     return files[-1] if files else None
 
 
-def run_optimizer(conn, days: int = 7) -> str:
-    """Run the analysis and return the path of the rendered HTML report.
+def run_claude(prompt: str, model: str = OPTIMIZER_MODEL, timeout: int = TIMEOUT_SECS) -> str:
+    """One tool-less `claude -p` call from the optimizer folder. Returns stdout.
     Raises RuntimeError with a readable message on failure."""
     cli = find_claude_cli()
     if not cli:
+        raise RuntimeError("Claude Code CLI not found. Install it, then try again.")
+    os.makedirs(OPTIMIZER_DIR, exist_ok=True)
+    env = dict(os.environ)
+    env["PATH"] = env.get("PATH", "") + ":/opt/homebrew/bin:/usr/local/bin"
+    env["TOKENCOACH_INTERNAL"] = "1"      # our own runs: no nudges
+    proc = subprocess.run(
+        [cli, "-p", "--model", model, "--tools", "", "--strict-mcp-config"],
+        input=prompt, capture_output=True, text=True, cwd=OPTIMIZER_DIR,
+        timeout=timeout, env=env,
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        raise RuntimeError((proc.stderr or proc.stdout or "claude exited with no output").strip()[:400])
+    return proc.stdout
+
+
+def split_lessons(output: str) -> tuple[str, list[dict]]:
+    """Separate the Markdown report from its trailing ```json lessons block."""
+    import json
+    import re
+    m = None
+    for m in re.finditer(r"```json\s*(\{.*?\})\s*```", output, re.S):
+        pass
+    if not m:
+        return output.strip(), []
+    try:
+        lessons = json.loads(m.group(1)).get("lessons") or []
+    except (ValueError, AttributeError):
+        lessons = []
+    report = (output[:m.start()] + output[m.end():]).strip()
+    return report, [l for l in lessons if isinstance(l, dict)]
+
+
+def run_optimizer(conn, days: int = 7) -> str:
+    """Run the analysis and return the path of the rendered HTML report.
+    Also records the lessons it proposes. Raises RuntimeError on failure."""
+    if not find_claude_cli():
         raise RuntimeError("Claude Code CLI not found. Install it, then try again.")
     digest = build_digest(conn, days)
     if "## Prompt 1" not in digest:
@@ -133,26 +189,22 @@ def run_optimizer(conn, days: int = 7) -> str:
         with open(prev_path, encoding="utf-8") as f:
             followup = FOLLOWUP.format(previous=f.read()[:8000])
     prompt = INSTRUCTIONS.format(days=days, followup=followup) + "\n\n" + digest
-
-    os.makedirs(OPTIMIZER_DIR, exist_ok=True)
-    env = dict(os.environ)
-    env["PATH"] = env.get("PATH", "") + ":/opt/homebrew/bin:/usr/local/bin"
-    proc = subprocess.run(
-        [cli, "-p", "--model", OPTIMIZER_MODEL, "--tools", "", "--strict-mcp-config"],
-        input=prompt, capture_output=True, text=True, cwd=OPTIMIZER_DIR,
-        timeout=TIMEOUT_SECS, env=env,
-    )
-    if proc.returncode != 0 or not proc.stdout.strip():
-        raise RuntimeError((proc.stderr or proc.stdout or "claude exited with no output").strip()[:400])
+    report, lessons = split_lessons(run_claude(prompt))
+    try:
+        from aiquotabar.coach import record_analysis_lessons
+        record_analysis_lessons(conn, lessons, prompt_scopes(conn, days))
+    except Exception:
+        from aiquotabar.config import log
+        log.exception("recording analysis lessons failed")
 
     os.makedirs(REPORT_DIR, exist_ok=True)
     stamp = datetime.now().strftime("%Y-%m-%d-%H%M")
     md_path = os.path.join(REPORT_DIR, f"optimizer-{stamp}.md")
     with open(md_path, "w", encoding="utf-8") as f:
-        f.write(proc.stdout.strip() + "\n")
+        f.write(report + "\n")
     html_path = md_path[:-3] + ".html"
     with open(html_path, "w", encoding="utf-8") as f:
-        f.write(render_markdown_page(proc.stdout, f"Usage advice · {stamp}"))
+        f.write(render_markdown_page(report, f"Usage advice · {stamp}"))
     return html_path
 
 
