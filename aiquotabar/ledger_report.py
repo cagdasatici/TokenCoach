@@ -165,11 +165,14 @@ const METRICS = {
   prompts: {label:'Prompts', fmt: v => Math.round(v).toLocaleString(), get: f => f.first ? 1 : 0},
   quota:   {label:'5h quota %', fmt: pct, get: f => f.q5 || 0},
 };
+const modelLabel = m => D.equivalents && D.equivalents[m] ? `${m} (≈ ${D.equivalents[m]} price)` : m;
 const RANGES = {today:'Today', '7d':'7 days', '30d':'30 days', '90d':'90 days', all:'All'};
 const DAY = 86400;
 
 // ── state (kept across reloads) and the effective view ──────────────────
-const DEFAULT = {range:'30d', metric:'cost', source:'', project:'', model:'', q:'', sort:'cost', adv:false};
+const DEFAULT = {range:'30d', group:'all', metric:'cost', source:'', project:'', model:'', q:'', sort:'cost', adv:false};
+const GROUPS = {all:'All', claude:'Claude', openai:'OpenAI'};
+const grp = src => D.provider[src] === 'claude' ? 'claude' : 'openai';
 let S = {...DEFAULT};
 try { Object.assign(S, JSON.parse(localStorage.getItem('tokencoach-dash') || '{}')); } catch (e) {}
 const save = () => { try { localStorage.setItem('tokencoach-dash', JSON.stringify(S)); } catch (e) {} };
@@ -190,7 +193,7 @@ function rangeBounds(r) {
   return [today - ({'7d':7, '30d':30, '90d':90}[r] - 1) * DAY, now + 1];
 }
 function filtered(lo, hi) {
-  return F.filter(f => f.t >= lo && f.t < hi && (!V.source || f.src === V.source)
+  return F.filter(f => f.t >= lo && f.t < hi && (V.group === 'all' || grp(f.src) === V.group) && (!V.source || f.src === V.source)
     && (!V.project || f.proj === V.project) && (!V.model || f.model === V.model));
 }
 const sum = (rows, get) => { let s = 0; for (const r of rows) s += get(r); return s; };
@@ -234,12 +237,14 @@ function fillSelect(el, key, values, label, fmt) {
 }
 function controls(lo, hi) {
   seg($('#range'), RANGES, 'range');
+  seg($('#group'), GROUPS, 'group');
   seg($('#metric'), Object.fromEntries(Object.entries(METRICS).map(([k, m]) => [k, m.label])), 'metric');
-  const inRange = F.filter(f => f.t >= lo && f.t < hi);
+  const inRange = F.filter(f => f.t >= lo && f.t < hi && (S.group === 'all' || grp(f.src) === S.group));
+  if (S.source && S.group !== 'all' && grp(S.source) !== S.group) S.source = '';
   const rank = get => { const m = new Map(); for (const f of inRange) m.set(get(f), (m.get(get(f)) || 0) + (f.cost || 0) + (f.tin + f.tout + f.tcr) / 1e7); return [...m.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]); };
   fillSelect($('#f-source'), 'source', SRC.map(s => s.key).filter(k => inRange.some(f => f.src === k) || k === S.source), 'All tools', k => SRC_BY[k].label);
   fillSelect($('#f-project'), 'project', rank(f => f.proj), 'All projects');
-  fillSelect($('#f-model'), 'model', rank(f => f.model), 'All models');
+  fillSelect($('#f-model'), 'model', rank(f => f.model), 'All models', modelLabel);
   $('#clear').style.display = (S.source || S.project || S.model) ? '' : 'none';
   $('#adv').classList.toggle('on', !!S.adv);
   document.body.classList.toggle('advanced', !!S.adv);
@@ -251,9 +256,11 @@ function monthPace() {
   const m0 = new Date(now.getFullYear(), now.getMonth(), 1).getTime() / 1000;
   const m1 = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime() / 1000;
   const frac = (D.generated - m0) / (m1 - m0);
-  const rows = F.filter(f => f.t >= m0 && !f.p.est && D.provider[f.src] === 'claude');
-  const cost = sum(rows, f => f.cost || 0);
-  return {cost, pace: frac > 0.03 ? cost / frac : null, plan: (D.plans || {}).claude};
+  const rows = F.filter(f => f.t >= m0 && !f.p.est && (V.group === 'all' || grp(f.src) === V.group));
+  const cost = sum(rows, f => f.cost || 0), plans = D.plans || {};
+  const plan = V.group === 'claude' ? plans.claude : V.group === 'openai' ? plans.chatgpt
+    : (plans.claude || 0) + (plans.chatgpt || 0) || null;
+  return {cost, pace: frac > 0.03 ? cost / frac : null, plan};
 }
 function tiles(rows, prev) {
   const cost = sum(rows, f => f.cost || 0), pcost = sum(prev, f => f.cost || 0);
@@ -264,12 +271,15 @@ function tiles(rows, prev) {
   const qx = sum(rows.filter(f => D.provider[f.src] === 'codex'), f => f.q5 || 0);
   const delta = (a, b) => b > 0 ? `${a >= b ? '▲' : '▼'} ${Math.abs(Math.round((a - b) / b * 100))}% vs previous ${RANGES[S.range] === 'Today' ? 'day' : 'period'}` : '';
   const mp = monthPace();
-  const planLine = mp.plan ? `${(mp.cost / mp.plan).toFixed(1)}× your $${mp.plan} Claude plan this month` : (mp.pace ? `on pace for ${usd(mp.pace)} this month` : '');
+  const planName = {claude: 'Claude plan', openai: 'ChatGPT plan', all: 'plans'}[V.group];
+  const planLine = mp.plan ? `${(mp.cost / mp.plan).toFixed(1)}× your $${mp.plan} ${planName} this month` : (mp.pace ? `on pace for ${usd(mp.pace)} this month` : '');
   const T = [
     ['Spend (API-equivalent)', usd(cost), [delta(cost, pcost), planLine].filter(Boolean).join(' · ')],
     ['Prompts', prompts.toLocaleString(), delta(prompts, pprompts)],
     ['Per prompt', prompts ? usd(cost / prompts) : '—', prompts ? `${(calls / prompts).toFixed(0)} agent responses on average` : ''],
-    ['5-hour quota used', `${pct(qc)} · ${pct(qx)}`, 'Claude (est.) · Codex, in 5-hour windows'],
+    V.group === 'claude' ? ['Claude 5-hour quota used', pct(qc), 'in 5-hour windows, estimated']
+      : V.group === 'openai' ? ['Codex 5-hour quota used', pct(qx), 'in 5-hour windows']
+      : ['5-hour quota used', `${pct(qc)} · ${pct(qx)}`, 'Claude (est.) · Codex, in 5-hour windows'],
   ];
   if (S.adv) {
     T.push(['Tokens', tok(tokens), `${tok(sum(rows, f => f.tout))} output`]);
@@ -433,6 +443,7 @@ function timeline(rows, lo, hi) {
 // ── advanced: quota over time ─────────────────────────────────────────────
 function quotaChart(lo, hi) {
   const series = [['claude', 'Claude 5-hour', 1], ['codex', 'Codex 5-hour', 2]]
+    .filter(([k]) => V.group === 'all' || (k === 'claude') === (V.group === 'claude'))
     .map(([k, label, slot]) => ({label, slot, pts: (D.quota[k] || []).filter(p => p[0] >= lo && p[0] < hi)})).filter(s => s.pts.length);
   const peaks = !['today', '7d'].includes(S.range);
   $('#q-title').textContent = peaks ? 'Peak 5-hour quota used per ' + (hi - lo > 120 * DAY ? 'week' : 'day') : 'Quota used (5-hour windows)';
@@ -575,7 +586,7 @@ function render() {
   if (S.adv) {
     quotaChart(lo, hi); heatmap(rows);
     breakdown($('#by-project'), rows, f => f.proj, 'project');
-    breakdown($('#by-model'), rows, f => f.model, 'model');
+    breakdown($('#by-model'), rows, f => f.model, 'model', modelLabel);
     breakdown($('#by-source'), rows, f => f.src, 'source', k => SRC_BY[k].label, k => `<span class="dot" style="background:var(--s${SRC_BY[k].slot})"></span>`);
     sessions(rows); prompts(rows);
   }
@@ -603,6 +614,7 @@ PAGE = """<!doctype html>
 <header><div class="brand"><h1>TokenCoach</h1><span class="sub" style="margin:0">Claude Code · Cowork · Codex{chat} · <span id="updated"></span></span></div></header>
 <div class="controls">
   <span class="seg" id="range"></span>
+  <span class="seg" id="group" aria-label="Provider"></span>
   <select id="f-source" class="adv" aria-label="Tool"></select>
   <select id="f-project" class="adv" aria-label="Project"></select>
   <select id="f-model" class="adv" aria-label="Model"></select>
@@ -722,7 +734,15 @@ def dashboard_data(conn, config: dict | None = None, days: int = DASHBOARD_DAYS)
         "plans": config.get("ledger_plans") or {},
         "has_chat": bool(present & {"claude_chat", "chatgpt_chat"}),
         "coach": coach_data, "nudges_on": nudge.is_installed(), "last_analysis": last_analysis,
+        "equivalents": {m: ledger.equivalent_model(m, ledger.ledger_overrides(config))
+                        for m in models if ledger.equivalent_model(m, ledger.ledger_overrides(config))
+                        and not _has_exact_price(m, config)},
     }
+
+
+def _has_exact_price(model: str, config: dict) -> bool:
+    prices = config.get("ledger_prices") or {}
+    return any(model.startswith(k) for k in prices)
 
 
 def _latest_advice() -> str:
@@ -749,9 +769,12 @@ def build_report(conn, config: dict | None = None, days: int = DASHBOARD_DAYS,
     data = dashboard_data(conn, config, days)
     data["live"] = live
     unpriced = ""
-    if any(f[3] is None for f in data["facts"]):
-        unpriced = ("Codex/OpenAI models have no bundled price; add them under \"ledger_prices\" "
-                    "in ~/.claude_bar_config.json to include them in $.")
+    if data["equivalents"]:
+        pairs = ", ".join(f"{m} ≈ {c}" for m, c in sorted(data["equivalents"].items()))
+        unpriced = ("OpenAI does not publish prices for the Codex models, so they are priced at the "
+                    f"nearest Claude tier (an assumption): {pairs}. Change a mapping with "
+                    "\"ledger_model_equivalents\" or set exact prices with \"ledger_prices\" in "
+                    "~/.claude_bar_config.json.")
     blob = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
     return PAGE.format(
         css=CSS, dcss=DASHBOARD_CSS, js=DASHBOARD_JS, data=blob,

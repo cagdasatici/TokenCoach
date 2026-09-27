@@ -109,11 +109,41 @@ class Pricing(unittest.TestCase):
         self.assertEqual(ledger._price_for("claude-opus-5")["in"], 5.0)
         self.assertEqual(ledger._price_for("claude-haiku-4-5-20251001")["in"], 1.0)
 
-    def test_unknown_model_is_unpriced_unless_overridden(self):
-        self.assertIsNone(ledger.call_cost("gpt-6-astra", 1, 1, 0, 0, 0))
-        cost = ledger.call_cost("gpt-6-astra", 1_000_000, 0, 0, 0, 0,
-                                overrides={"gpt-6": {"in": 3.0, "out": 9.0}})
-        self.assertAlmostEqual(cost, 3.0)
+    def test_openai_models_priced_at_claude_tier(self):
+        self.assertEqual(ledger.equivalent_model("gpt-5.6-terra"), "claude-sonnet-5")
+        self.assertEqual(ledger.equivalent_model("gpt-5.6-sol"), "claude-opus-5")
+        self.assertEqual(ledger.equivalent_model("gpt-5.6-luna"), "claude-haiku-4-5")
+        self.assertEqual(ledger.equivalent_model("gpt-5.4-mini"), "claude-haiku-4-5")
+        self.assertEqual(ledger.equivalent_model("gpt-6-astra"), "claude-opus-5")
+        self.assertIsNone(ledger.equivalent_model("claude-sonnet-5"))
+        self.assertIsNone(ledger.call_cost("unknown", 1, 1, 0, 0, 0))
+        # 1M fresh input + 1M cached on terra = Sonnet 5 input + cache read
+        self.assertAlmostEqual(ledger.call_cost("gpt-5.6-terra", 1_000_000, 0, 0, 0, 1_000_000), 2.2)
+
+    def test_user_prices_and_equivalents_win(self):
+        o = ledger.ledger_overrides({
+            "ledger_prices": {"gpt-6": {"in": 3.0, "out": 9.0}},
+            "ledger_model_equivalents": {"gpt-5.6-sol": "claude-sonnet-5", "bad": "nope"}})
+        self.assertAlmostEqual(ledger.call_cost("gpt-6-astra", 1_000_000, 0, 0, 0, 0, o), 3.0)
+        self.assertEqual(ledger.equivalent_model("gpt-5.6-sol", o), "claude-sonnet-5")
+        self.assertNotIn("bad", o[ledger.EQUIVALENTS_KEY])
+
+
+class Repricing(LedgerTestCase):
+    def test_changed_mapping_reprices_codex_but_not_claude(self):
+        _jl(self.root / "codex/2026/09/27/rollout-a.jsonl", [
+            _codex_meta(), _codex_turn("gpt-5.6-sol"), _codex_prompt("go"),
+            _codex_record("r1", "2026-09-27T10:00:05Z", inp=1_000_000, cached=0, out=0)])
+        _jl(self.root / "claude/p/s1.jsonl", [_cc_user("u1", "hi", "2026-09-27T10:00:00Z"),
+                                            _cc_asst("m1", "2026-09-27T10:00:01Z")])
+        self.ingest()
+        cost = lambda i: self.conn.execute("SELECT cost_usd FROM calls WHERE id = ?", (i,)).fetchone()[0]
+        self.assertAlmostEqual(cost("openai:r1"), 5.0)          # Opus 5 input price
+        claude_before = cost("anthropic:m1")
+        ledger.reprice(self.conn, ledger.ledger_overrides(
+            {"ledger_model_equivalents": {"gpt-5.6-sol": "claude-sonnet-5"}}))
+        self.assertAlmostEqual(cost("openai:r1"), 2.0)          # now Sonnet 5
+        self.assertEqual(cost("anthropic:m1"), claude_before)
 
 
 class ClaudeCodeIngest(LedgerTestCase):
@@ -223,7 +253,7 @@ class CodexIngest(LedgerTestCase):
         self.assertEqual(c["model"], "gpt-6-astra")
         self.assertEqual(c["project"], "beta")
         self.assertIsNotNone(c["prompt_id"])
-        self.assertIsNone(c["cost_usd"])                 # no bundled OpenAI price
+        self.assertIsNotNone(c["cost_usd"])              # priced at the Claude-tier equivalent
 
     def test_older_logs_use_token_count(self):
         _jl(self.root / "codex/2026/06/01/rollout-old.jsonl", [

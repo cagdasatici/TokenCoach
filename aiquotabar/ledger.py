@@ -23,8 +23,10 @@ relies on AIQuotaLeft's own polling samples, so its numbers are estimates.
 """
 
 import glob
+import hashlib
 import json
 import os
+import re
 import sqlite3
 import time
 from datetime import datetime, timedelta
@@ -61,24 +63,57 @@ CLAUDE_PRICES = {
     "claude-haiku-4":    {"in": 1.0,  "out": 5.0},
 }
 
-# OpenAI model prices are not bundled: the Codex models seen in local logs
-# (gpt-6-*, gpt-5.6-*) have no price this project can cite. Users can add
-# them in ~/.claude_bar_config.json under "ledger_prices", e.g.
-#   {"gpt-6-astra": {"in": 5.0, "out": 20.0, "read": 0.5}}
-# Unpriced calls still carry exact tokens and Codex quota %.
+# OpenAI does not publish prices for the Codex models seen in local logs, so
+# they are priced at the Claude tier they most resemble. This is an assumption,
+# shown as such in the dashboard; the naming follows sun > earth > moon (sol >
+# terra > luna). First match wins. Override per model in
+# ~/.claude_bar_config.json: "ledger_model_equivalents": {"gpt-6-astra": "claude-sonnet-5"}
+# or set exact prices: "ledger_prices": {"gpt-6-astra": {"in": 5, "out": 20, "read": 0.5}}.
+MODEL_EQUIVALENTS = [
+    (r"-(mini|nano)\b", "claude-haiku-4-5"),
+    (r"-luna\b", "claude-haiku-4-5"),
+    (r"-terra\b", "claude-sonnet-5"),
+    (r"-sol\b", "claude-opus-5"),
+    (r"^codex-auto-review", "claude-haiku-4-5"),
+    (r"^gpt-6", "claude-opus-5"),
+    (r"^gpt-5", "claude-opus-5"),
+    (r"^o\d", "claude-opus-5"),
+]
+EQUIVALENTS_KEY = "=equivalents"      # reserved key inside the overrides dict
+
+
+def _prefix_lookup(model: str, table: dict):
+    best = None
+    for prefix in table:
+        if model.startswith(prefix) and (best is None or len(prefix) > len(best)):
+            best = prefix
+    return table[best] if best else None
+
+
+def equivalent_model(model: str, overrides: dict | None = None) -> str | None:
+    """The Claude model whose price stands in for a non-Claude model."""
+    if not model or model.startswith("claude-"):
+        return None
+    user = (overrides or {}).get(EQUIVALENTS_KEY) or {}
+    hit = _prefix_lookup(model, user)
+    if hit:
+        return hit
+    for pattern, claude in MODEL_EQUIVALENTS:
+        if re.search(pattern, model):
+            return claude
+    return None
 
 
 def _price_for(model: str, overrides: dict | None = None) -> dict | None:
     if not model:
         return None
-    for table in (overrides or {}, CLAUDE_PRICES):
-        best = None
-        for prefix in table:
-            if model.startswith(prefix) and (best is None or len(prefix) > len(best)):
-                best = prefix
-        if best:
-            return table[best]
-    return None
+    prices = {k: v for k, v in (overrides or {}).items() if k != EQUIVALENTS_KEY}
+    for table in (prices, CLAUDE_PRICES):
+        hit = _prefix_lookup(model, table)
+        if hit:
+            return hit
+    eq = equivalent_model(model, overrides)
+    return _prefix_lookup(eq, CLAUDE_PRICES) if eq else None
 
 
 def call_cost(model: str, inp: int, out: int, write_5m: int, write_1h: int,
@@ -558,6 +593,7 @@ def ingest(conn: sqlite3.Connection, sources=None, overrides: dict | None = None
             counts["files"] += 1
             counts["prompts"] += len(prompts)
             counts["calls"] += len(calls)
+    reprice(conn, overrides)
     link_prompts(conn)
     import_claude_samples(conn)
     attribute_quota(conn)
@@ -792,9 +828,33 @@ def session_stats(conn, session_ids: list[str]) -> dict[str, dict]:
 
 
 def ledger_overrides(config: dict) -> dict:
-    """User-supplied per-model prices from the app config."""
+    """User-supplied per-model prices and price equivalents from the app config."""
     prices = config.get("ledger_prices") or {}
-    return {k: v for k, v in prices.items() if isinstance(v, dict) and "in" in v and "out" in v}
+    out = {k: v for k, v in prices.items() if isinstance(v, dict) and "in" in v and "out" in v}
+    eq = config.get("ledger_model_equivalents") or {}
+    eq = {k: v for k, v in eq.items() if isinstance(v, str) and v in CLAUDE_PRICES or
+          isinstance(v, str) and _prefix_lookup(v, CLAUDE_PRICES)}
+    if eq:
+        out[EQUIVALENTS_KEY] = eq
+    return out
+
+
+def reprice(conn, overrides: dict | None = None) -> int:
+    """Recompute costs of non-Claude calls when the pricing rules change, and
+    price any unpriced ones. Claude calls keep their exact ingest-time cost
+    (which knew the 5-minute / 1-hour cache split)."""
+    version = hashlib.sha1(json.dumps([MODEL_EQUIVALENTS, CLAUDE_PRICES, overrides or {}],
+                                      sort_keys=True).encode()).hexdigest()[:12]
+    where = "estimated = 0 AND model NOT LIKE 'claude-%'"
+    if _meta_get(conn, "pricing_version") == version:
+        where += " AND cost_usd IS NULL"
+    rows = conn.execute(f"SELECT id, model, input_tokens, output_tokens, cache_write_tokens, "
+                        f"cache_read_tokens FROM calls WHERE {where}").fetchall()
+    conn.executemany("UPDATE calls SET cost_usd = ? WHERE id = ?", [
+        (call_cost(r["model"], r["input_tokens"], r["output_tokens"], r["cache_write_tokens"], 0,
+                   r["cache_read_tokens"], overrides), r["id"]) for r in rows])
+    _meta_set(conn, "pricing_version", version)
+    return len(rows)
 
 
 def fmt_usd(v: float | None) -> str:

@@ -159,13 +159,17 @@ What the numbers mean:
 | | Claude Code / Cowork | Codex | Web chat imports |
 |---|---|---|---|
 | Tokens per prompt | exact, from logs | exact, from logs | estimated |
-| API-equivalent $ | list price | add prices yourself¹ | — |
+| API-equivalent $ | list price | nearest Claude tier¹ | — |
 | Quota used per prompt | estimated from this app's quota readings | from Codex's reading after each response | — |
 
-¹ OpenAI prices for the Codex models are not bundled. Add them to
-`~/.claude_bar_config.json` as `"ledger_prices": {"gpt-6-astra": {"in": 0, "out": 0, "read": 0}}`
-(USD per million tokens). Add `"ledger_plans": {"claude": 200}` to see what your plan
-is worth against API prices.
+¹ OpenAI does not publish prices for the Codex models, so each is priced at the nearest
+Claude tier, an assumption labelled in the dashboard: `*-sol`, `gpt-6-*` and the plain
+`gpt-5.x` flagships ≈ Opus 5, `*-terra` ≈ Sonnet 5, `*-luna` / `*-mini` ≈ Haiku 4.5.
+Change a mapping in `~/.claude_bar_config.json` with
+`"ledger_model_equivalents": {"gpt-6-astra": "claude-sonnet-5"}`, or set exact prices with
+`"ledger_prices": {"gpt-6-astra": {"in": 5, "out": 20, "read": 0.5}}` (USD per million tokens).
+Use **Set Plan Prices…** to compare against your plans. The dashboard's **Claude / OpenAI**
+switch shows each provider on its own.
 
 "API-equivalent $" is what the same tokens would cost on the provider's API. On a
 subscription you pay a flat fee, so treat it as a yardstick, not a bill.
