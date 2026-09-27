@@ -101,9 +101,10 @@ MIN_SESSIONS = 2         # ignore one-off patterns
 DETECTORS = {
     "long-sessions": {
         "title": "Keep sessions to one task",
-        "rule": ("Keep each session to one task. When a task is finished, or the conversation "
-                 "has grown long (roughly 50+ steps), say so and suggest starting a fresh "
-                 "session with a 2-3 line summary instead of continuing here."),
+        "rule": ("Keep each session to one task. When a task is finished, say so and suggest "
+                 "starting a fresh session with a 2-3 line summary instead of continuing here. "
+                 "If the conversation has grown long (roughly 50+ steps) and the task is not "
+                 "finished, suggest /compact instead so the work continues on a smaller context."),
     },
     "broad-asks": {
         "title": "Scope broad requests first",
