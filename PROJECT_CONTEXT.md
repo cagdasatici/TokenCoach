@@ -2,7 +2,7 @@
 
 A navigation snapshot, not a replacement for requirements or live evidence. Update it after a meaningful milestone.
 
-## Snapshot — 2026-09-27: v1.0.0
+## Snapshot — 2026-09-27: v1.0.1 released; `main` has fixes since (demo sandbox, scripts, doctor, dashboard resize)
 
 - **Product:** macOS menu bar app. Quota left for Claude and ChatGPT (from AIQuotaBar), plus a per-prompt ledger of Claude Code, Cowork and Codex usage, a local dashboard (simple view + Advanced), Claude Code nudges, lessons written into CLAUDE.md / AGENTS.md with before/after, Improve, templates, chat-export import and a sample-data demo.
 - **Pricing:** Anthropic and OpenAI list prices in `tokencoach/ledger.py` (checked 2026-09-27; OpenAI long-context rates above 272K). Unpublished models use a labelled sibling price. User overrides: `ledger_prices`, `ledger_model_equivalents`.

@@ -123,7 +123,7 @@ auto-update make this move by themselves on their next start.
 | | Claude Code / Cowork | Codex | claude.ai / chatgpt.com chats |
 |---|---|---|---|
 | Tokens per prompt | exact, from local transcripts | exact, from local transcripts | estimated from an imported data export |
-| API-equivalent $ | Anthropic list prices | OpenAI list prices¹ | not priced |
+| API-equivalent $ | Anthropic list prices (checked 2026-09-27) | OpenAI list prices¹ | not priced |
 | Quota per prompt | estimated from TokenCoach's quota readings | from Codex's own reading after each response | — |
 
 **API-equivalent $** is what the same tokens would cost on the provider's API. On a
