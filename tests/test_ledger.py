@@ -353,14 +353,45 @@ class ReportAndOptimizer(LedgerTestCase):
         ])
         self.ingest()
 
-    def test_report_renders_and_escapes(self):
-        from aiquotabar.ledger_report import build_report
+    def test_dashboard_renders_and_embeds_data_safely(self):
+        from aiquotabar.ledger_report import build_report, dashboard_data
         empty = build_report(self.conn, {})
-        self.assertIn("<title>AI Usage Report</title>", empty)
+        self.assertIn("<title>AI Usage Dashboard</title>", empty)
         self._seed()
-        html = build_report(self.conn, {"ledger_plans": {"claude": 200}})
-        self.assertIn("summarise &lt;this&gt; &amp; that", html)
-        self.assertIn("plan value", html)
+        _jl(self.root / "claude/p/s1.jsonl", [_cc_user("u9", "</script><b>x", "2026-09-27T10:00:00Z")], mode="a")
+        self.ingest()
+        page = build_report(self.conn, {"ledger_plans": {"claude": 200}})
+        # the JSON blob must not be able to close its <script> tag
+        blob = page.split('<script type="application/json" id="data">', 1)[1].split("</script>", 1)[0]
+        self.assertNotIn("</", blob)
+        data = json.loads(blob.replace("<\\/", "</"))
+        self.assertEqual(data["plans"], {"claude": 200})
+        self.assertEqual(len(data["prompts"]), 1)          # u9 has no response: not shown
+        self.assertEqual(data["prompts"][0][5], "summarise <this> & that")
+        self.assertEqual(data["facts"][0][12], 1)          # first fact marks the prompt
+        self.assertIn(data["models"][0], ("claude-sonnet-5",))
+        _ = dashboard_data
+
+    def test_orphan_calls_get_a_placeholder_prompt(self):
+        from aiquotabar.ledger_report import dashboard_data
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _jl(self.root / "claude/p/s5.jsonl", [_cc_asst("lone", now, session="s5")])
+        self.ingest()
+        d = dashboard_data(self.conn)
+        self.assertTrue(d["prompts"][0][5].startswith("(no prompt recorded"))
+        self.assertEqual(d["facts"][0][12], 0)             # not counted as a prompt
+
+    def test_open_file_prefers_configured_then_chrome(self):
+        from aiquotabar import ledger_report
+        with patch.object(ledger_report.os.path, "exists", side_effect=lambda p: "Google Chrome" in p), \
+                patch.object(ledger_report.subprocess, "Popen") as popen:
+            ledger_report.open_file("/tmp/x.html")
+            popen.assert_called_once_with(["open", "-a", "Google Chrome", "/tmp/x.html"])
+        with patch.object(ledger_report.os.path, "exists", return_value=False), \
+                patch.object(ledger_report.subprocess, "Popen") as popen:
+            ledger_report.open_file("/tmp/x.html")
+            popen.assert_called_once_with(["open", "/tmp/x.html"])
 
     def test_digest_excludes_optimizer_runs(self):
         from aiquotabar.optimizer import build_digest

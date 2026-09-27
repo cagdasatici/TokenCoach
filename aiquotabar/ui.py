@@ -1209,6 +1209,14 @@ def _ensure_panel_classes():
                 except Exception:
                     log.debug("_ClickHandler.refreshClicked_ error", exc_info=True)
 
+            def dashboardClicked_(self, sender):
+                try:
+                    cb = getattr(type(self), '_dashboard_fn', None)
+                    if callable(cb):
+                        cb()
+                except Exception:
+                    log.debug("_ClickHandler.dashboardClicked_ error", exc_info=True)
+
             def gearClicked_(self, sender):
                 try:
                     get_menu = getattr(type(self), '_gear_menu_fn', None)
@@ -1706,8 +1714,8 @@ class _UsagePanel:
             for line in _ledger_menu_lines(summary, getattr(self._app, "_ledger_status", ""))[1:]:
                 elements.append(('text_line', y, 14, line.strip()))
                 y += 14 + 2
-            elements.append(('text_line', y, 14, "Report and advice: \u2699 menu"))
-            y += 14 + 2
+            elements.append(('dashboard_btn', y, 22))
+            y += 22 + 2
             y += self.SECTION_GAP
 
         # ── Footer separator ────────────────────────────────────────────
@@ -1778,6 +1786,21 @@ class _UsagePanel:
                     spark_str,
                     NSTextField, NSFont, NSColor, NSMakeRect,
                 )
+
+            elif kind == 'dashboard_btn':
+                btn = NSButton.alloc().initWithFrame_(NSMakeRect(PAD - 6, real_y, 170, h))
+                btn.setTitle_("Open dashboard \u2197")
+                btn.setBordered_(False)
+                btn.setAlignment_(NSTextAlignmentLeft)
+                btn.setFont_(NSFont.systemFontOfSize_weight_(12, 0.3))
+                try:
+                    btn.setContentTintColor_(NSColor.linkColor())
+                except Exception:
+                    pass
+                if self._handler:
+                    btn.setTarget_(self._handler)
+                    btn.setAction_(b"dashboardClicked:")
+                doc.addSubview_(btn)
 
             elif kind == 'text_line':
                 _, _, _, text = elem
@@ -2182,12 +2205,13 @@ class ClaudeBar(rumps.App):
         items.append(_mi("  Spend (API-equivalent)"))
         for line in _ledger_menu_lines(self._ledger_summary, self._ledger_status):
             items.append(_mi(line))
-        items.append(rumps.MenuItem("Open Usage Report\u2026", callback=self._open_usage_report))
+        items.append(rumps.MenuItem("Open Dashboard \u2197", callback=self._open_dashboard))
         items.append(rumps.MenuItem(
             "Analyzing\u2026" if self._optimizer_running else "Analyze My Usage\u2026",
             callback=None if self._optimizer_running else self._analyze_usage,
         ))
         items.append(rumps.MenuItem("Import Chat Export\u2026", callback=self._import_chat_export))
+        items.append(rumps.MenuItem("Set Plan Prices\u2026", callback=self._set_plan_prices))
         items.append(None)
 
         # -- Other API providers ----------------------------------------------
@@ -2400,6 +2424,7 @@ class ClaudeBar(rumps.App):
             type(handler)._share_on_x_fn = lambda: self._share_popover.share_on_x()
             type(handler)._show_menu_fn = lambda: self._show_fallback_menu()
             type(handler)._gear_menu_fn = lambda: self._get_settings_menu()
+            type(handler)._dashboard_fn = lambda: self._open_dashboard(None)
             self._click_handler_inst = handler
 
             btn.setTarget_(handler)
@@ -2540,6 +2565,12 @@ class ClaudeBar(rumps.App):
                 conn = self._ledger()
                 counts = _ledger.ingest(conn, overrides=overrides, time_budget=30)
                 self._ledger_summary = _ledger.today_summary(conn)
+                if counts["complete"]:
+                    try:
+                        from aiquotabar.ledger_report import write_report
+                        write_report(conn, self.config)
+                    except Exception:
+                        log.exception("dashboard write failed")
             if not counts["complete"]:
                 self._ledger_status = "Still indexing older logs\u2026"
                 threading.Timer(1.0, self._schedule_ledger).start()
@@ -2553,7 +2584,12 @@ class ClaudeBar(rumps.App):
         if self._last_data is not None:
             self._post_data(self._last_data)
 
-    def _open_usage_report(self, _sender):
+    def _open_dashboard(self, _sender):
+        """Open the dashboard in Chrome (or the default browser). Rebuilds it
+        first so it is current even between refreshes."""
+        if self._panel and self._panel.visible:
+            self._panel.dismiss()
+
         def work():
             try:
                 from aiquotabar.ledger_report import write_report, open_file
@@ -2562,11 +2598,36 @@ class ClaudeBar(rumps.App):
                     path = write_report(conn, self.config)
                 finally:
                     conn.close()
-                open_file(path)
+                open_file(path, self.config.get("dashboard_browser"))
             except Exception:
-                log.exception("usage report failed")
-                _notify("AIQuotaLeft", "Could not build the usage report", "See ~/.claude_bar.log")
+                log.exception("dashboard failed")
+                _notify("AIQuotaLeft", "Could not open the dashboard", "See ~/.claude_bar.log")
         threading.Thread(target=work, daemon=True).start()
+
+    def _set_plan_prices(self, _sender):
+        """Ask for monthly plan prices so the dashboard can show plan value."""
+        plans = dict(self.config.get("ledger_plans") or {})
+        for key, name in (("claude", "Claude"), ("chatgpt", "ChatGPT")):
+            cur = plans.get(key)
+            ans = _ask_text(
+                "Plan prices",
+                f"Your {name} plan price per month in USD (e.g. 20, 100, 200). Leave empty if you have none.",
+                "" if cur is None else f"{cur:g}",
+            )
+            if ans is None:
+                return
+            ans = ans.strip().lstrip("$")
+            if not ans:
+                plans.pop(key, None)
+                continue
+            try:
+                plans[key] = float(ans)
+            except ValueError:
+                _notify("AIQuotaLeft", "Not a number", f"{name} price left unchanged")
+        with self._config_lock:
+            self.config["ledger_plans"] = plans
+            save_config(self.config)
+        self._schedule_ledger()
 
     def _analyze_usage(self, _sender):
         if self._optimizer_running:

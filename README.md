@@ -130,9 +130,15 @@ AIQuotaLeft also reads the transcripts that **Claude Code, Cowork and Codex** al
 write on your Mac and keeps a local ledger of every prompt: tokens, model, project,
 API-equivalent cost and how much quota it used. Nothing leaves your machine.
 
-- **Menu / panel:** today's spend, top project and most expensive prompt.
-- **Open Usage Report…** — a static HTML dashboard: spend per day, by tool, project
-  and model, and your 50 most expensive prompts (click one to read it in full).
+- **Menu / panel:** today's spend, top project and most expensive prompt, and an
+  **Open dashboard ↗** button (opens in Chrome if installed, else your default browser).
+- **Dashboard** — one local HTML page, refreshed by the app every few minutes:
+  time range (today / 7 / 30 / 90 days / all), tool, project and model filters;
+  totals with change vs the previous period; a timeline by tool ($, tokens, prompts or
+  quota); quota used over time for Claude and Codex; a weekday × hour activity map;
+  breakdowns by project, model and tool (click to filter); the most expensive sessions;
+  searchable prompts with full text; this month's spend against your plan price
+  (**Set Plan Prices…** in the ⚙ menu); and the latest usage advice.
 - **Analyze My Usage…** — on demand only. Sends a digest of your costliest prompts to
   your own `claude` CLI (Sonnet) and opens concrete advice: habit changes, cheaper model
   fits and prompt rewrites. It uses a little of your Claude quota each time, and the
@@ -157,7 +163,7 @@ is worth against API prices.
 "API-equivalent $" is what the same tokens would cost on the provider's API. On a
 subscription you pay a flat fee, so treat it as a yardstick, not a bill.
 
-From a terminal: `python3 claude_bar.py --ledger | --report | --optimize | --import-export FILE`.
+From a terminal: `python3 claude_bar.py --ledger | --dashboard | --optimize | --import-export FILE`.
 
 ---
 
