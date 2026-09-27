@@ -151,3 +151,38 @@ class Packaging(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DemoCannotTouchRealFiles(unittest.TestCase):
+    def test_demo_started_after_a_real_import_refuses(self):
+        # the exact mistake that once let sample lessons reach a real CLAUDE.md
+        code = ("import sys; sys.argv = ['tokencoach.py', '--demo']\n"
+                "import tokencoach.ledger_report\n"
+                "from tokencoach import __main__ as m\n"
+                "m.main()")
+        with tempfile.TemporaryDirectory() as d:
+            env = {k: v for k, v in os.environ.items() if k != "TOKENCOACH_DEMO"}
+            env["TOKENCOACH_DATA_DIR"] = d
+            out = subprocess.run([os.sys.executable, "-c", code], cwd=REPO, env=env,
+                                 capture_output=True, text=True, timeout=60)
+            self.assertNotEqual(out.returncode, 0)
+            self.assertIn("fresh process", out.stderr)
+
+    def test_global_targets_follow_the_demo_env_at_call_time(self):
+        from tokencoach import coach
+        with patch.dict(os.environ, {"TOKENCOACH_DEMO": "1"}):
+            files = coach._global_files()
+        self.assertFalse(any(f.startswith(os.path.expanduser("~/.claude")) for f in files.values()))
+
+
+class Backups(unittest.TestCase):
+    def test_same_second_backups_never_overwrite(self):
+        from tokencoach import coach
+        with tempfile.TemporaryDirectory() as d, patch.object(coach, "BACKUP_DIR", os.path.join(d, "b")):
+            f = os.path.join(d, "CLAUDE.md")
+            pathlib.Path(f).write_text("original\n")
+            coach.write_block(f, [("a", "rule a")])
+            coach.write_block(f, [("a", "rule a"), ("b", "rule b")])
+            saved = sorted(pathlib.Path(d, "b").iterdir())
+            self.assertEqual(len(saved), 2)
+            self.assertIn("original", saved[0].read_text() + saved[1].read_text())

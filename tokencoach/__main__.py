@@ -19,6 +19,10 @@ def _demo(serve: bool = True, shots_dir: str | None = None):
     import os
     import tempfile
     data_dir = os.path.join(tempfile.gettempdir(), "tokencoach-demo")
+    if "tokencoach.config" in sys.modules:
+        # Paths and the demo flag are fixed when the config is first imported;
+        # if that already happened with real settings, the sandbox can't hold.
+        sys.exit("--demo must start in a fresh process (run: tokencoach --demo)")
     os.environ["TOKENCOACH_DATA_DIR"] = data_dir
     os.environ["TOKENCOACH_DEMO"] = "1"
     from tokencoach import demo, ledger

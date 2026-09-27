@@ -25,5 +25,10 @@ A navigation snapshot, not a replacement for requirements or live evidence. Upda
 
 ## Open
 
-- Nudge display in the interactive Claude Code UI: the hook output is accepted (verified with `claude -p`); confirm how it looks in a normal session.
 - Codex has no prompt hook, so Codex gets coaching through AGENTS.md lessons only.
+- `brew install` not yet run end to end on the owner's Mac (ghcr.io DNS failures at release time); the formula steps were reproduced by hand.
+
+## Notes
+
+- 2026-09-27: nudges confirmed displaying in an interactive Claude Code session.
+- 2026-09-27: a demo started after the package was already imported bypassed the sandbox and rewrote the real global lesson files (restored from the ledger). The demo now refuses in that case, checks the demo flag at call time, and refuses to write outside its folder; backups never overwrite each other.

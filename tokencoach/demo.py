@@ -137,6 +137,8 @@ def build(conn, now: float | None = None, days: int = 70, seed: int = 5) -> dict
 def seed_coach(conn, demo_home: str, lesson_day: float) -> None:
     """Lessons (one applied twelve days ago), nudges, a rewrite and templates."""
     from tokencoach import coach
+    from tokencoach.config import APP_SUPPORT
+    sandbox = os.path.realpath(APP_SUPPORT)
     coach.detect_lessons(conn, days=30)
     coach.record_analysis_lessons(conn, [{
         "title": "Ask for file paths before searching",
@@ -145,8 +147,12 @@ def seed_coach(conn, demo_home: str, lesson_day: float) -> None:
         "scope": "global", "tools": "both", "evidence_prompts": [1, 2, 3, 4, 5, 6],
         "confidence": 0.9, "saving": "~15% fewer responses on exploratory tasks"}],
         {i: {"session_id": f"demo-x{i}", "project": "storefront", "source": "claude_code"} for i in range(1, 7)})
-    long = conn.execute("SELECT id FROM lessons WHERE title = 'Keep sessions to one task'").fetchone()
+    long = conn.execute("SELECT * FROM lessons WHERE title = 'Keep sessions to one task'").fetchone()
     if long:
+        targets = coach.target_files(conn, dict(long))
+        # Hard stop: sample lessons may only ever be written inside the demo folder.
+        if not targets or not all(os.path.realpath(t).startswith(sandbox + os.sep) for t in targets):
+            raise RuntimeError(f"demo would write outside its sandbox: {targets}")
         coach.apply_lesson(conn, long["id"])
         conn.execute("UPDATE lessons SET applied_ts = ? WHERE id = ?", (lesson_day, long["id"]))
     rng = random.Random(3)

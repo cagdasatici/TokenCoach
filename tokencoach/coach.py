@@ -33,7 +33,10 @@ DETECT_DAYS = 30
 BACKUP_DIR = os.path.join(os.path.dirname(ledger.LEDGER_DB), "backups")
 def _global_files() -> dict:
     from tokencoach.config import DEMO, APP_SUPPORT
-    home = os.path.join(APP_SUPPORT, "demo-home") if DEMO else os.path.expanduser("~")
+    # Read the environment too, not just the import-time flag: demo mode must
+    # hold even if the package was imported before the demo switched it on.
+    demo = DEMO or os.environ.get("TOKENCOACH_DEMO") == "1"
+    home = os.path.join(APP_SUPPORT, "demo-home") if demo else os.path.expanduser("~")
     return {"claude": os.path.join(home, ".claude", "CLAUDE.md"),
             "codex": os.path.join(home, ".codex", "AGENTS.md")}
 
@@ -292,7 +295,10 @@ def write_block(path: str, rules: list[tuple[str, str]]) -> None:
             existing = f.read()
         os.makedirs(BACKUP_DIR, exist_ok=True)
         safe = re.sub(r"[^\w.-]+", "_", path.strip("/"))
-        backup = os.path.join(BACKUP_DIR, f"{datetime.now():%Y%m%d-%H%M%S}-{safe}")
+        stem = os.path.join(BACKUP_DIR, f"{datetime.now():%Y%m%d-%H%M%S}-{safe}")
+        backup, n = stem, 1
+        while os.path.exists(backup):            # never overwrite an earlier backup
+            backup, n = f"{stem}.{n}", n + 1
         shutil.copy2(path, backup)
     pattern = re.compile(re.escape(BLOCK_START) + r".*?" + re.escape(BLOCK_END) + r"\n?", re.S)
     body = pattern.sub("", existing).rstrip("\n")
