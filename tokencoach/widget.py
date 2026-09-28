@@ -14,6 +14,7 @@ def _write_widget_cache(
     providers: list[ProviderData],
     cc_stats: dict | None,
     config: dict | None = None,
+    windows: list[dict] | None = None,
 ) -> None:
     """Write current usage snapshot for the WidgetKit widget.
 
@@ -25,7 +26,8 @@ def _write_widget_cache(
         def _row_dict(row: LimitRow | None) -> dict | None:
             if row is None:
                 return None
-            return {"label": row.label, "pct": row.pct, "reset_str": row.reset_str}
+            return {"label": row.label, "pct": row.pct, "reset_str": row.reset_str,
+                    "reset_ts": row.reset_ts}
 
         def _active_providers(cfg: dict) -> list[str]:
             """Return list of provider IDs the user has configured."""
@@ -76,6 +78,8 @@ def _write_widget_cache(
             },
             "active_providers": _active_providers(config or {}),
             "bar_providers": _bar_providers(config or {}),
+            # quota windows with pace, for the dashboard's health (tokencoach/health.py)
+            "windows": windows or [],
         }
 
         os.makedirs(WIDGET_CACHE_DIR, exist_ok=True)

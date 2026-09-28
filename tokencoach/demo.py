@@ -184,6 +184,25 @@ def seed_coach(conn, demo_home: str, lesson_day: float) -> None:
     conn.commit()
 
 
+def sample_windows(scenario: str = "good", now: float | None = None) -> list[dict]:
+    """Made-up quota readings for the demo's health panel, one per scenario
+    (good / watch / critical); the dashboard's ?health= picks one."""
+    now = now or time.time()
+    h, d = 3600, 86400
+
+    def w(provider, kind, left, reset_in, eta=None):
+        return {"provider": provider, "kind": kind, "left": left, "reset_ts": now + reset_in,
+                "reset_str": "", "eta_min": eta}
+    return {
+        "good": [w("claude", "5h", 73, 2 * h + 600), w("claude", "week", 61, 3.5 * d),
+                 w("codex", "5h", 88, 4 * h + 120), w("codex", "week", 78, 5 * d)],
+        "watch": [w("claude", "5h", 64, 2 * h + 600), w("claude", "week", 52, 3.5 * d),
+                  w("codex", "5h", 18, 2 * h + 600, eta=40), w("codex", "week", 75, 5 * d)],
+        "critical": [w("claude", "5h", 58, 2 * h + 600), w("claude", "week", 15, 2 * d),
+                     w("codex", "5h", 0, h + 720), w("codex", "week", 80, 5 * d)],
+    }[scenario]
+
+
 def prepare(data_dir: str) -> str:
     """Create the demo folder with config, ledger and coach data. Returns it."""
     os.makedirs(data_dir, exist_ok=True)

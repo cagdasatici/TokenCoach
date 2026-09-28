@@ -36,6 +36,7 @@ from tokencoach.history import (
 from tokencoach.widget import _write_widget_cache, _is_widget_installed
 from tokencoach.update import _check_and_apply_update, _restart_app
 from tokencoach import ledger as _ledger
+from tokencoach import health
 
 
 # -- Brand icon helpers --------------------------------------------------------
@@ -678,6 +679,10 @@ def _mi(title: str) -> rumps.MenuItem:
     item.set_callback(None)
     item._menuitem.setEnabled_(True)
     return item
+
+
+# Apple system orange / red, as in the dashboard and the menu bar percentage.
+_HEALTH_HEX = {health.WATCH: "#FF9F0A", health.CRITICAL: "#FF3B30"}
 
 
 def _colored_mi(title: str, color_hex: str) -> rumps.MenuItem:
@@ -1933,6 +1938,16 @@ class TokenCoachApp(rumps.App):
     def _rebuild_menu(self, data: UsageData | None):
         items: list = []
 
+        # -- health: one line on top when the quota needs attention -----------
+        q = getattr(self, "_quota_health", None)
+        line = health.menu_line(q) if q else None
+        if line:
+            head, _, detail = line.partition(". ")
+            items.append(_colored_mi(f"  {head}", _HEALTH_HEX[q["state"]]))
+            if detail:
+                items.append(_mi(f"  {detail}"))
+            items.append(None)
+
         # -- CLAUDE section ---------------------------------------------------
         items.append(_section_header_mi("  Claude", "claude_icon.png", "#D97757"))
 
@@ -2606,7 +2621,8 @@ class TokenCoachApp(rumps.App):
             self._check_pacing_alerts()
 
             self._post_data(data)          # <- main thread applies title + menu
-            _write_widget_cache(data, self._provider_data, self._cc_stats, self.config)
+            _write_widget_cache(data, self._provider_data, self._cc_stats, self.config,
+                                windows=health.windows_from(data, self._provider_data, self._history))
 
             # -- silent auto-update --
             if time.time() - self._last_update_check > UPDATE_CHECK_INTERVAL:
@@ -2788,14 +2804,19 @@ class TokenCoachApp(rumps.App):
     }
 
     def _set_bar_title(self, provider_segments: list[tuple[str, int, str]],
-                       cc_msgs: int | None = None):
+                       cc_msgs: int | None = None, states: dict | None = None):
         """Multi-indicator attributed title with brand logo icons.
 
         provider_segments: list of (provider_name, pct, extra_suffix)
           e.g. [("Claude", 36, " \u00b7"), ("ChatGPT", 12, "")]
 
+        states: provider_name -> health state. Like the battery icon, the
+        percentage keeps the normal menu bar color while healthy and turns
+        orange (watch) or red (empty) only when it needs attention.
+
         Falls back to colored text symbols if AppKit / icons unavailable.
         """
+        states = states or {}
         try:
             from AppKit import (NSColor, NSFont,
                                 NSForegroundColorAttributeName, NSFontAttributeName)
@@ -2833,10 +2854,14 @@ class TokenCoachApp(rumps.App):
                     seg.addAttribute_value_range_(NSForegroundColorAttributeName, color, (0, len(sym)))
                     s.appendAttributedString_(seg)
 
-                s.appendAttributedString_(
-                    NSAttributedString.alloc().initWithString_attributes_(
-                        f" {_remaining(pct)}%{suffix}", base)
-                )
+                num = NSMutableAttributedString.alloc().initWithString_attributes_(
+                    f" {_remaining(pct)}%{suffix}", base)
+                alert = {health.WATCH: NSColor.systemOrangeColor,
+                         health.CRITICAL: NSColor.systemRedColor}.get(states.get(name))
+                if alert:
+                    num.addAttribute_value_range_(
+                        NSForegroundColorAttributeName, alert(), (1, len(f"{_remaining(pct)}%")))
+                s.appendAttributedString_(num)
 
             # -- Claude Code  diamond 3.2k --
             if cc_msgs is not None and cc_msgs > 0:
@@ -2886,6 +2911,8 @@ class TokenCoachApp(rumps.App):
     _BAR_PRIORITY = ["Claude", "ChatGPT"]
 
     def _apply(self, data: UsageData):
+        self._quota_health = health.quota_health(
+            health.windows_from(data, self._provider_data, self._history))
         primary = data.session or data.weekly_all or data.weekly_sonnet
         if primary:
             weekly_maxed = any(
@@ -2916,7 +2943,9 @@ class TokenCoachApp(rumps.App):
             if self._cc_stats:
                 cc_msgs = self._cc_stats.get("week_messages")
 
-            self._set_bar_title(segments, cc_msgs=cc_msgs)
+            self._set_bar_title(segments, cc_msgs=cc_msgs, states={
+                "Claude": self._quota_health["providers"].get("claude"),
+                "ChatGPT": self._quota_health["providers"].get("codex")})
         else:
             self.title = "\u25c6"
         self._rebuild_menu(data)

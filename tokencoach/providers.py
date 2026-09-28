@@ -29,6 +29,7 @@ class LimitRow:
     label: str
     pct: int          # 0–100
     reset_str: str    # e.g. "resets Thu 00:00" or "resets Oct 5, 14:32" - see _fmt_reset
+    reset_ts: float | None = None   # the same moment as a Unix timestamp, for pace
 
 
 @dataclass
@@ -162,6 +163,23 @@ def fetch_raw(cookie_str: str) -> dict:
 _DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
+def _reset_epoch(val) -> float | None:
+    """A reset time as sent by the APIs (Unix seconds or ISO 8601, UTC) as a
+    Unix timestamp, or None if it can't be read."""
+    if val is None or val == "":
+        return None
+    try:
+        if isinstance(val, (int, float)):
+            return float(val)
+        s = str(val).rstrip("Z")
+        if "+" not in s[10:] and s[-6] != "+":
+            s += "+00:00"
+        return datetime.fromisoformat(s).timestamp()
+    except (ValueError, IndexError):
+        log.debug("_reset_epoch failed for %r", val, exc_info=True)
+        return None
+
+
 def _fmt_reset(val) -> str:
     """Format a reset timestamp as an absolute local time, never "in Xh Ym".
 
@@ -217,7 +235,7 @@ def _row(data: dict, key: str, label: str) -> LimitRow | None:
     # API returns 0-100 percentage for all fields (five_hour, seven_day, etc.)
     pct = min(100, round(raw))
     reset = _fmt_reset(bucket.get("resets_at"))
-    return LimitRow(label, pct, reset)
+    return LimitRow(label, pct, reset, _reset_epoch(bucket.get("resets_at")))
 
 
 def parse_usage(raw: dict) -> UsageData:
@@ -359,7 +377,7 @@ def _parse_wham_window(pw: dict | None, label: str) -> LimitRow | None:
         return None
     pct = min(100, int(pw.get("used_percent", 0)))
     reset_str = _fmt_reset(pw.get("reset_at")) if pw.get("reset_at") else ""
-    return LimitRow(label, pct, reset_str)
+    return LimitRow(label, pct, reset_str, _reset_epoch(pw.get("reset_at")))
 
 
 def _parse_wham_bucket(

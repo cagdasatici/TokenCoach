@@ -15,10 +15,10 @@ CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 # name -> (query string, width, height)
 SHOTS = {
-    "dashboard-light": ("theme=light&view=simple&range=30d", 1280, 1480),
-    "dashboard-dark":  ("theme=dark&view=simple&range=30d", 1280, 1480),
-    "coach-dark":      ("theme=dark&view=simple&range=30d&hide=tiles,card-timeline,card-top,templates-card", 1280, 900),
-    "advanced-dark":   ("theme=dark&view=advanced&range=30d&hide=card-coach,card-top,templates-card,tiles", 1280, 1500),
+    "dashboard-light": ("theme=light&view=simple&range=30d", 1280, 1700),
+    "dashboard-dark":  ("theme=dark&view=simple&range=30d", 1280, 1700),
+    "coach-dark":      ("theme=dark&view=simple&range=30d&hide=health,card-timeline,card-top,templates-card", 1280, 900),
+    "advanced-dark":   ("theme=dark&view=advanced&range=30d&hide=health,card-coach,card-top,templates-card", 1280, 1500),
 }
 
 NUDGE_HTML = """<!doctype html><meta charset="utf-8"><style>

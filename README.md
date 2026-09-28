@@ -9,7 +9,7 @@ for the same results.** A macOS menu bar app for people who live in Claude Code 
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
-  <img alt="TokenCoach dashboard: spend, coach lessons with before/after, timeline and costliest prompts" src="docs/images/dashboard-light.png">
+  <img alt="TokenCoach dashboard: a green, amber or red health state, quota left, habits, coach lessons with before/after, spending and costliest prompts" src="docs/images/dashboard-light.png">
 </picture>
 
 <sub>All screenshots use the built-in sample data (`tokencoach --demo`).</sub>
@@ -40,8 +40,13 @@ Mac and keeps a local ledger: one row per prompt, with tokens, model, project, w
 cost at API prices, and how much of your 5-hour quota it used.
 
 The menu bar shows the quota you have **left** for Claude and ChatGPT, today's spend, and your
-most expensive prompt. **Open dashboard** shows everything by day, project, model and tool,
-with an **All / Claude / OpenAI** switch and an **Advanced** mode for the deep dive.
+most expensive prompt. Like the battery icon, a percentage turns orange when you're running low
+or on pace to run out before the reset, and red when that limit is empty.
+
+**Open dashboard** starts with one answer: **healthy, watch or action needed**. It is decided
+by the worst of three checks: quota left right now, your weekly pace, and your habits (cost per
+prompt against your own usual). Below that is everything by day, project, model and tool, with an
+**All / Claude / OpenAI** switch and an **Advanced** mode for the deep dive.
 
 <br clear="right">
 
