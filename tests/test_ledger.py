@@ -363,10 +363,29 @@ class QuotaAttribution(unittest.TestCase):
     def test_reset_counts_new_window_usage(self):
         self.assertEqual(self._inc([80, 95, 4, 9]), [15, 4, 5])
 
+    def test_flat_intervals_yield_zero_only_at_the_level(self):
+        out, _, _ = ledger._increments_list(list(enumerate([10, 10, 9, 10, 12])), None, flat=True)
+        self.assertEqual([(a, d) for a, _, d in out], [(0, 0), (2, 0), (3, 2)])
+
+    def test_small_reset_is_recognised_after_the_window_span(self):
+        # 20 -> 3 is under RESET_DROP, but 5 hours after the window's first reading
+        # it can only be a new window: its 3 and the next 4 both count
+        h = 3600
+        out, level, start = ledger._increments_list(
+            [(0, 12), (1 * h, 20), (5 * h, 3), (5.5 * h, 7)], None, span=5 * h)
+        self.assertEqual([d for _, _, d in out], [8, 3, 4])
+        self.assertEqual((level, start), (7, 5 * h))
+
+    def test_small_dip_inside_the_span_is_still_a_stale_reading(self):
+        h = 3600
+        out, _, _ = ledger._increments_list([(0, 12), (1 * h, 20), (2 * h, 3), (3 * h, 21)],
+                                            None, span=5 * h)
+        self.assertEqual([d for _, _, d in out], [8, 1])
+
     def test_level_carries_over_between_passes(self):
-        out, level = ledger._increments_list([(0, 50), (1, 55)], None)
-        self.assertEqual(level, 55)
-        out, _ = ledger._increments_list([(1, 55), (2, 54), (3, 57)], level)
+        out, level, start = ledger._increments_list([(0, 50), (1, 55)], None)
+        self.assertEqual((level, start), (55, 0))
+        out, _, _ = ledger._increments_list([(1, 55), (2, 54), (3, 57)], level, start=start)
         self.assertEqual([d for _, _, d in out], [2])
 
 
@@ -385,7 +404,7 @@ class CodexQuotaEndToEnd(LedgerTestCase):
         q = {c["id"]: c["quota_5h_pct"] for c in self.calls()}
         self.assertIsNone(q["openai:r1"])        # first sample is the baseline
         self.assertAlmostEqual(q["openai:r2"], 3.0)
-        self.assertEqual(q["openai:r3"], 0)     # sampled, no rise: measured as nothing
+        self.assertIsNone(q["openai:r3"])        # a dip below the level: unknown
         # appending more samples later keeps the level; no double count
         _jl(self.root / "codex/2026/09/27/rollout-a.jsonl", [
             _codex_record("r4", "2026-09-27T10:00:30Z"),
@@ -432,6 +451,12 @@ class CodexQuotaEndToEnd(LedgerTestCase):
     def test_calls_outside_sampled_intervals_stay_unknown(self):
         # before the first sample, and across a gap too long to attribute
         q = self._two_calls_with_samples([(90, 20), (90 + ledger.MAX_SAMPLE_GAP + 1, 20)])
+        self.assertIsNone(q["anthropic:m1"])
+        self.assertIsNone(q["anthropic:m2"])
+
+    def test_dip_below_level_stays_unknown(self):
+        # 20 -> 12 could be a stale reading or a reset under RESET_DROP: usage is hidden
+        q = self._two_calls_with_samples([(30, 20), (90, 12), (150, 12)])
         self.assertIsNone(q["anthropic:m1"])
         self.assertIsNone(q["anthropic:m2"])
 
@@ -534,6 +559,17 @@ class ReportAndOptimizer(LedgerTestCase):
         d = dashboard_data(self.conn)
         self.assertTrue(d["prompts"][0][5].startswith("(no prompt recorded"))
         self.assertEqual(d["facts"][0][12], 0)             # not counted as a prompt
+
+    def test_facts_count_calls_with_measured_quota(self):
+        from tokencoach.ledger_report import dashboard_data
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _jl(self.root / "claude/p/s6.jsonl", [_cc_user("u1", "go", now, session="s6"),
+                                             _cc_asst("a1", now, session="s6"), _cc_asst("a2", now, session="s6")])
+        self.ingest()
+        self.conn.execute("UPDATE calls SET quota_5h_pct = 1.5 WHERE id = 'anthropic:a1'")
+        fact = dashboard_data(self.conn)["facts"][0]
+        self.assertEqual((fact[2], fact[8], fact[13]), (2, 1.5, 1))   # 2 calls, 1 measured
 
     def test_open_file_prefers_configured_then_chrome(self):
         from tokencoach import ledger_report

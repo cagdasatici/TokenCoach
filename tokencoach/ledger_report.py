@@ -181,6 +181,7 @@ section { margin-top:34px; }
 .kpi:first-child { border-left:0; padding-left:0; }
 .kpi .k { font-size:13px; color:var(--text-secondary); }
 .kpi .v { font-size:28px; font-weight:700; letter-spacing:-.02em; margin-top:2px; white-space:nowrap; }
+.kpi .v .pair { font-size:21px; }   /* two providers in one tile */
 .kpi .d { font-size:12px; color:var(--text-muted); }
 .chip { display:inline-block; font-size:12px; font-weight:600; padding:1px 7px; border-radius:20px; margin-left:6px;
   vertical-align:5px; letter-spacing:0; }
@@ -296,7 +297,9 @@ const view = () => S.adv ? S : {...S, metric:'cost', source:'', project:'', mode
 // ── data: facts = one row per (prompt, model) ─────────────────────────────
 const P = D.prompts.map((p, i) => ({i, id: p[0], t: p[1], src: p[2], proj: p[3], sess: p[4], text: p[5], est: p[6], trunc: p[7]}));
 const F = D.facts.map(r => ({p: P[r[0]], model: D.models[r[1]], calls: r[2], cost: r[3], tin: r[4], tout: r[5],
-  tcw: r[6], tcr: r[7], q5: r[8], qw: r[9], ctx: r[10], t: r[11], first: r[12]}));
+  tcw: r[6], tcr: r[7], q5: r[8], qw: r[9], ctx: r[10], t: r[11], first: r[12], qn: r[13] || 0}));
+// Quota sums: unmeasured quota is unknown, not 0, so a group with nothing measured stays null ('—').
+const addq = (a, v) => v == null ? a : (a || 0) + v;
 F.forEach(f => { f.src = f.p.src; f.proj = f.p.proj; });
 
 function startOfDay(ts) { const d = new Date(ts * 1000); d.setHours(0,0,0,0); return d.getTime() / 1000; }
@@ -462,10 +465,17 @@ function tiles(rows, prev) {
     ['Per prompt', (prompts ? usd(cost / prompts) : '—') + (prompts && pprompts ? chip(cost / prompts, pcost / pprompts, true) : ''), ''],
   ];
   if (S.adv) {
-    const qc = sum(rows.filter(f => D.provider[f.src] === 'claude'), f => f.q5 || 0);
-    const qx = sum(rows.filter(f => D.provider[f.src] === 'codex'), f => f.q5 || 0);
-    T.push(['5-hour quota used', V.group === 'openai' ? pct(qx) : V.group === 'claude' ? pct(qc) : `${pct(qc)} · ${pct(qx)}`,
-      V.group === 'all' ? 'Claude (est.) · Codex, summed over windows' : 'summed over 5-hour windows']);
+    const quotaOf = prov => {
+      const rs = rows.filter(f => D.provider[f.src] === prov && !f.p.est), n = sum(rs, f => f.calls), known = sum(rs, f => f.qn);
+      return {v: known ? sum(rs, f => f.q5 || 0) : null, cover: n ? known / n : 1};
+    };
+    const qc = quotaOf('claude'), qx = quotaOf('codex');
+    const shown = V.group === 'openai' ? [qx] : V.group === 'claude' ? [qc] : [qc, qx];
+    const cover = Math.min(...shown.map(q => q.cover));
+    const qv = shown.map(q => pct(q.v)).join(' · ');
+    T.push(['5-hour quota used', shown.length > 1 ? `<span class="pair">${qv}</span>` : qv,
+      (V.group === 'all' ? 'Claude (est.) · Codex, summed over windows' : 'summed over 5-hour windows') +
+      (cover < 0.995 ? `; measured for ${Math.round(cover * 100)}% of responses` : '')]);
     T.push(['Tokens', tok(tokens), `${tok(sum(rows, f => f.tout))} output`]);
     T.push(['Cache reuse', inTok ? Math.round(sum(rows, f => f.tcr) / inTok * 100) + '%' : '—', 'input served from cache (cheaper)']);
   }
@@ -776,9 +786,9 @@ function heatmap(rows) {
 function breakdown(el, rows, keyOf, filterKey, labelOf, lead) {
   const M = METRICS[V.metric], g = new Map();
   for (const f of rows) {
-    const k = keyOf(f); if (!g.has(k)) g.set(k, {k, v: 0, cost: 0, priced: false, prompts: 0, tok: 0, q: 0});
+    const k = keyOf(f); if (!g.has(k)) g.set(k, {k, v: 0, cost: 0, priced: false, prompts: 0, tok: 0, q: null});
     const a = g.get(k); a.v += M.get(f); a.cost += f.cost || 0; a.priced ||= f.cost != null; a.prompts += f.first ? 1 : 0;
-    a.tok += f.tin + f.tout + f.tcw + f.tcr; a.q += f.q5 || 0;
+    a.tok += f.tin + f.tout + f.tcw + f.tcr; a.q = addq(a.q, f.q5);
   }
   const list = [...g.values()].sort((a, b) => b.v - a.v || b.tok - a.tok).slice(0, 12), top = Math.max(0, ...list.map(a => a.v));
   if (!list.length) { el.innerHTML = '<div class="empty">No data.</div>'; return; }
@@ -793,9 +803,9 @@ function breakdown(el, rows, keyOf, filterKey, labelOf, lead) {
 function sessions(rows) {
   const M = METRICS[V.metric], g = new Map();
   for (const f of rows) {
-    const k = f.p.sess; if (!g.has(k)) g.set(k, {src: f.src, proj: f.proj, t0: f.t, t1: f.t, v: 0, cost: 0, priced: false, prompts: new Set(), calls: 0, ctx: 0, q: 0});
+    const k = f.p.sess; if (!g.has(k)) g.set(k, {src: f.src, proj: f.proj, t0: f.t, t1: f.t, v: 0, cost: 0, priced: false, prompts: new Set(), calls: 0, ctx: 0, q: null});
     const a = g.get(k); a.t0 = Math.min(a.t0, f.t); a.t1 = Math.max(a.t1, f.t); a.v += M.get(f); a.cost += f.cost || 0;
-    a.priced ||= f.cost != null; if (f.first) a.prompts.add(f.p); a.calls += f.calls; a.ctx = Math.max(a.ctx, f.ctx); a.q += f.q5 || 0;
+    a.priced ||= f.cost != null; if (f.first) a.prompts.add(f.p); a.calls += f.calls; a.ctx = Math.max(a.ctx, f.ctx); a.q = addq(a.q, f.q5);
   }
   const list = [...g.values()].sort((a, b) => b.v - a.v).slice(0, 25);
   if (!list.length) { $('#sessions').innerHTML = '<div class="empty">No sessions in this range.</div>'; return; }
@@ -846,9 +856,9 @@ let promptLimit = 30;
 function promptAgg(rows) {
   const g = new Map();
   for (const f of rows) {
-    if (!g.has(f.p)) g.set(f.p, {p: f.p, cost: 0, priced: false, tok: 0, calls: 0, ctx: 0, q: 0, models: new Set()});
+    if (!g.has(f.p)) g.set(f.p, {p: f.p, cost: 0, priced: false, tok: 0, calls: 0, ctx: 0, q: null, models: new Set()});
     const a = g.get(f.p); a.cost += f.cost || 0; a.priced ||= f.cost != null; a.tok += f.tin + f.tout + f.tcw + f.tcr;
-    a.calls += f.calls; a.ctx = Math.max(a.ctx, f.ctx); a.q += f.q5 || 0; a.models.add(f.model);
+    a.calls += f.calls; a.ctx = Math.max(a.ctx, f.ctx); a.q = addq(a.q, f.q5); a.models.add(f.model);
   }
   return [...g.values()].filter(a => !a.p.id.startsWith('orphan:'));
 }
@@ -880,7 +890,7 @@ function topPrompts(rows) {
 function prompts(rows) {
   const q = S.q.trim().toLowerCase();
   let list = promptAgg(rows).filter(a => !q || a.p.text.toLowerCase().includes(q));
-  const key = {cost: a => a.cost + a.tok / 1e9, tokens: a => a.tok, recent: a => a.p.t, quota: a => a.q}[S.sort];
+  const key = {cost: a => a.cost + a.tok / 1e9, tokens: a => a.tok, recent: a => a.p.t, quota: a => a.q ?? -1}[S.sort];   // unknown quota sorts below a measured 0
   list.sort((a, b) => key(b) - key(a));
   $('#p-count').textContent = `${list.length.toLocaleString()} prompts`;
   $('#prompts').innerHTML = list.length ? `<table><tr><th>When</th><th>Prompt</th><th class="n">Responses</th><th class="n">Tokens</th><th class="n">Peak context</th><th class="n">$ / quota</th><th></th></tr>${promptRows(list.slice(0, promptLimit), true)}</table>`
@@ -988,7 +998,7 @@ def dashboard_data(conn, config: dict | None = None, days: int = DASHBOARD_DAYS)
                COUNT(*) calls, SUM(cost_usd) cost,
                SUM(input_tokens) tin, SUM(output_tokens) tout,
                SUM(cache_write_tokens) tcw, SUM(cache_read_tokens) tcr,
-               SUM(quota_5h_pct) q5, SUM(quota_week_pct) qw,
+               SUM(quota_5h_pct) q5, SUM(quota_week_pct) qw, COUNT(quota_5h_pct) qn,
                MAX(input_tokens + cache_write_tokens + cache_read_tokens) ctx,
                MIN(ts) t, MIN(source) source, MIN(session_id) session_id,
                MIN(project) project, MAX(estimated) est
@@ -1031,6 +1041,7 @@ def dashboard_data(conn, config: dict | None = None, days: int = DASHBOARD_DAYS)
             None if r["q5"] is None else round(r["q5"], 3),
             None if r["qw"] is None else round(r["qw"], 3),
             r["ctx"] or 0, round(r["t"], 1), 1 if first and not pid.startswith("orphan:") else 0,
+            r["qn"] or 0,     # calls whose 5-hour quota was measured; the rest are unknown, not 0
         ])
 
     quota = {}

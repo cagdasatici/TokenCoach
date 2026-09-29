@@ -756,40 +756,53 @@ MAX_SAMPLE_GAP = 6 * 3600
 # A fall of at least this many points means the window reset. Smaller dips are
 # noise: parallel sessions report slightly stale readings of the same counter.
 RESET_DROP = 30
+# Window lengths: a reading this long after one known to be in a window is in a later one.
+WINDOW_SPAN = {"5h": 5 * 3600, "week": 7 * 86400}
 ATTRIBUTION_VERSION = "3"
 
 
-def quota_increments(samples, level: float | None = None):
+def quota_increments(samples, level: float | None = None, flat: bool = False,
+                     span: float | None = None, start: float | None = None):
     """Yield (prev_ts, ts, used_delta) for each rise in a used-% series.
 
     Measures against the highest reading seen in the current window, so a
     stale reading followed by the real one is not counted twice.
-    Returns the final level via StopIteration value (see _increments_list).
+    A window is new after a fall of RESET_DROP, or, given its `span`, once a
+    reading comes `span` or more after `start`, the earliest reading known to
+    be in the current window: that window has ended, however little it used.
+    With `flat`, an interval that ends exactly at that level (nothing used)
+    also yields a delta of 0. One that ends below it is left out: a stale
+    reading, or a reset too small to recognise, hides what was used.
+    Returns (level, start) via StopIteration value (see _increments_list).
     """
     prev_ts = None
     for ts, pct in samples:
         if level is None:
-            level = pct
-        elif level - pct >= RESET_DROP:     # new window
-            level = pct
-            if prev_ts is not None and pct > 0:
+            level, start = pct, ts
+        elif level - pct >= RESET_DROP or (span and start is not None and ts - start >= span):
+            level, start = pct, ts          # new window
+            if prev_ts is not None and (pct > 0 or flat):
                 yield prev_ts, ts, pct
         elif pct > level:
             if prev_ts is not None:
                 yield prev_ts, ts, pct - level
             level = pct
+        elif flat and pct == level and prev_ts is not None:
+            yield prev_ts, ts, 0
+        if start is None:
+            start = ts
         prev_ts = ts
-    return level
+    return level, start
 
 
-def _increments_list(samples, level):
-    gen = quota_increments(samples, level)
+def _increments_list(samples, level, flat: bool = False, span=None, start=None):
+    gen = quota_increments(samples, level, flat, span, start)
     out = []
     while True:
         try:
             out.append(next(gen))
         except StopIteration as stop:
-            return out, stop.value
+            return (out, *stop.value)
 
 
 def attribute_quota(conn):
@@ -797,7 +810,7 @@ def attribute_quota(conn):
     if _meta_get(conn, "attribution_version") != ATTRIBUTION_VERSION:
         conn.execute("UPDATE calls SET quota_5h_pct = NULL, quota_week_pct = NULL")
         conn.execute("DELETE FROM meta WHERE key LIKE 'attributed_until:%' "
-                     "OR key LIKE 'attributed_level:%'")
+                     "OR key LIKE 'attributed_level:%' OR key LIKE 'attributed_start:%'")
         _meta_set(conn, "attribution_version", ATTRIBUTION_VERSION)
     for provider, sources in (("claude", ("claude_code", "cowork")), ("codex", ("codex",))):
         for window, col in (("5h", "quota_5h_pct"), ("week", "quota_week_pct")):
@@ -805,6 +818,8 @@ def attribute_quota(conn):
             since = float(_meta_get(conn, f"attributed_until:{key}", 0))
             level = _meta_get(conn, f"attributed_level:{key}")
             level = float(level) if level is not None else None
+            start = _meta_get(conn, f"attributed_start:{key}")
+            start = float(start) if start is not None else None
             samples = conn.execute(
                 "SELECT ts, pct FROM quota_samples WHERE provider=? AND window=? "
                 "AND ts >= ? ORDER BY ts",
@@ -814,19 +829,21 @@ def attribute_quota(conn):
                 continue
             # The first sample was the last one of the previous pass; its
             # level is already stored, so start the walk from it.
-            increments, level = _increments_list([(r["ts"], r["pct"]) for r in samples], level)
+            increments, level, start = _increments_list(
+                [(r["ts"], r["pct"]) for r in samples], level, flat=True,
+                span=WINDOW_SPAN[window], start=start)
             marks = ",".join("?" * len(sources))
-            # A sampled interval where used-% did not rise cost nothing measurable:
-            # its calls get 0, not NULL. NULL stays for calls no pair of samples covers.
-            for a, b in zip(samples, samples[1:]):
-                if b["ts"] - a["ts"] <= MAX_SAMPLE_GAP:
+            for a_ts, b_ts, delta in increments:
+                if b_ts - a_ts > MAX_SAMPLE_GAP:
+                    continue
+                if not delta:
+                    # used-% held at its level: these calls cost nothing measurable, which
+                    # is 0, not unknown. Calls in a dip or outside any interval stay NULL.
                     conn.execute(
                         f"UPDATE calls SET {col} = 0 WHERE {col} IS NULL AND source IN ({marks}) "
                         f"AND ts > ? AND ts <= ? AND estimated = 0",
-                        (*sources, a["ts"], b["ts"]),
+                        (*sources, a_ts, b_ts),
                     )
-            for a_ts, b_ts, delta in increments:
-                if b_ts - a_ts > MAX_SAMPLE_GAP:
                     continue
                 rows = conn.execute(
                     f"SELECT id, cost_usd, input_tokens, output_tokens, cache_write_tokens, "
@@ -844,6 +861,8 @@ def attribute_quota(conn):
             _meta_set(conn, f"attributed_until:{key}", samples[-1]["ts"])
             if level is not None:
                 _meta_set(conn, f"attributed_level:{key}", level)
+            if start is not None:
+                _meta_set(conn, f"attributed_start:{key}", start)
 
 
 # ── queries ──────────────────────────────────────────────────────────────────
