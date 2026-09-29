@@ -10,14 +10,16 @@ Handoff for a fresh session. Written 2026-09-29.
 | TC1: missing quota is unknown, not zero | `5e28e0e` | `coach._window_stats` averages known prompts only and returns `quota_known`. The Coach panel shows "unavailable" and "N of M prompts measured". |
 | TC2: claims match the calculation | `aa6f155` | "Limited / Moderate / Strong evidence · N sessions" (`coach.evidence_level`), no "% confident". Before/after is labelled an observed change, not a controlled test, with dates, prompts and sessions per period. Under 30 prompts on either side shows **small sample**. "Working" is now "Applied". |
 
-None of this is pushed. The working tree also holds a separate, uncommitted **yield** feature from another session (`yield_metrics.py`, `trailer.py`, `test_yield.py`, plus edits in `ledger_report.py`, `ui.py`, `README.md`, `demo.py`, `ledger.py`, `__main__.py`, `uninstall.sh`, `AGENTS.md`, `PROJECT_CONTEXT.md`). Don't commit it with TC work. Stage your own hunks only, and test the staged snapshot with `git checkout-index -a --prefix=<scratch>/idx/`.
+All of the above and the follow-ups below were pushed to `main` on 2026-09-29, together with the yield feature (`fd262d5`).
 
-## Follow-ups from TC1/TC2 (code, small)
+## Follow-ups from TC1/TC2 (done 2026-09-29)
 
-1. **Flat intervals leave quota NULL.** `ledger.attribute_quota()` writes quota only for intervals where used-% rose. Calls in a sampled interval with no rise stay NULL, which now reads as "unknown", so the known-only average skews upward. Fix: write 0 for calls inside sampled intervals (gap ≤ `MAX_SAMPLE_GAP`) with no rise, keep NULL outside them, and bump `ATTRIBUTION_VERSION`. Tests go in `tests/test_ledger.py`.
-2. **Other dashboard quota sums treat missing as 0.** `grep -n "q5 || 0" tokencoach/ledger_report.py` finds the quota chart metric, the Claude/Codex quota totals and three breakdown aggregations. Decide per place whether it needs a coverage note or `null` handling. Do this after item 1, since that changes how common NULL is.
-3. **README screenshots are stale.** `docs/images/coach-*.png` still show "NN% confident" and "Working". Regenerate with `.venv/bin/python tokencoach.py --screenshots docs/images` (sample data only) *after* the yield work lands, because `demo.py` is being changed there.
+1. **Flat intervals** (`50db52c`, refined in `41b5408`). An interval where used-% holds at the window's level gives its calls 0. A dip below the level stays NULL: a stale reading or an unrecognised reset hides what was used. While checking this on the demo it turned out that resets under `RESET_DROP` (30 points) were never recognised, so light-use windows were measured against the previous window's high. A reading a full window span after the earliest one known to be in the window now starts a new window (`WINDOW_SPAN`, `attributed_start:*` meta). `ATTRIBUTION_VERSION` 3 re-attributes existing ledgers. Demo coverage went from 11% to 99% of Claude calls.
+2. **Dashboard quota sums** (`41b5408`). Facts carry the number of calls with a measured quota. The 5-hour tile says "measured for N% of responses" when under 100%; breakdown, session and prompt rows show "—" when nothing was measured. The quota chart metric still counts unknown as 0, since it only scales bars and the tile carries the coverage.
+3. **Screenshots** regenerated from sample data (`34fec43`).
 4. Checked with nothing left to do: the menu bar (`ui.py`) and notifications make no lesson or savings claims. Nudge text is unchanged.
+
+Known and not fixed: in the Advanced tiles, the "Per prompt" change chip can spill into the next tile at narrow widths.
 
 ## TC3: release acceptance on the Mac mini (arrives about 2026-10-02)
 
