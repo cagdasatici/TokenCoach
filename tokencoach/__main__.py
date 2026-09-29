@@ -11,10 +11,14 @@ USAGE = """usage: tokencoach [option]
   --dashboard            index, then write and open the usage dashboard (alias: --report)
   --optimize             index, then ask Claude for usage advice (uses your quota)
   --import-export PATH   import a claude.ai or ChatGPT data export (estimated tokens)
+  --yield                index, then show what your sessions produced: commits that held, rework
+  --yield-install PATH   track the git repository at PATH: commits Claude Code makes there get a
+                         Claude-Session line, so their cost can be tied to what they produced
+  --yield-remove PATH    remove that hook and stop tracking the repository (history stays)
   --demo                 open the dashboard with sample data (reads and changes nothing of yours)
   --screenshots DIR      write the README screenshots from sample data (needs Google Chrome)
-  --cleanup              before `brew uninstall`: stop the app, remove its login item and the
-                         Claude Code hook (your data and applied lessons stay)
+  --cleanup              before `brew uninstall`: stop the app, remove its login item, the
+                         Claude Code hook and the git hooks (your data and applied lessons stay)
 """
 
 
@@ -90,16 +94,59 @@ def _ledger_cli(cmd: str, args: list[str]):
               f"{res['conversations']} {res['source']} conversations (estimated tokens)")
 
 
+def _yield_cli(cmd: str, args: list[str]):
+    from tokencoach import ledger, trailer, yield_metrics
+    from tokencoach.config import load_config
+    if cmd in ("--yield-install", "--yield-remove") and not args:
+        sys.exit(USAGE)
+    conn = ledger.open_ledger()
+    try:
+        if cmd == "--yield-install":
+            try:
+                trailer.install_repo(args[0])
+            except trailer.TrailerError as e:
+                sys.exit(f"tokencoach: {e}")
+            repo = yield_metrics.register_repo(conn, args[0])
+            res = yield_metrics.scan_repo(conn, repo)
+            print(f"Tracking {repo}: read {res['new']} commit{'' if res['new'] == 1 else 's'} from the last "
+                  f"{yield_metrics.WINDOW_DAYS} days.\n"
+                  f"Commits Claude Code makes there now end with a {trailer.TRAILER_KEY} line "
+                  "(commits you make in a terminal don't).\n"
+                  f"Numbers appear {yield_metrics.SETTLE_DAYS} days after the first tagged commit; "
+                  "see them with: tokencoach --yield")
+        elif cmd == "--yield-remove":
+            try:
+                removed = trailer.uninstall_repo(args[0])
+            except trailer.TrailerError as e:
+                sys.exit(f"tokencoach: {e}")
+            yield_metrics.unregister_repo(conn, args[0])
+            print("Removed the git hook and stopped tracking the repository (history kept)."
+                  if removed else
+                  "Stopped tracking the repository. No TokenCoach git hook was there to remove.")
+        else:
+            ledger.ingest(conn, overrides=ledger.ledger_overrides(load_config()))
+            yield_metrics.scan_all(conn)
+            print(yield_metrics.format_report(yield_metrics.snapshot(conn)))
+    finally:
+        conn.close()
+
+
 def _cleanup():
     """Undo what the app set up outside its own folder, for installs without
     uninstall.sh (Homebrew). Data and applied lessons are left alone."""
     import os
     import subprocess
-    from tokencoach import nudge
+    from tokencoach import ledger, nudge, yield_metrics
     from tokencoach.config import LAUNCH_AGENT_LABEL, LAUNCH_AGENT_PLIST
     if nudge.is_installed():
         nudge.uninstall()
         print("Removed the Claude Code nudge hook (settings backup kept)")
+    conn = ledger.open_ledger()
+    try:
+        for repo in yield_metrics.remove_hooks(conn):
+            print(f"Removed the git hook from {repo}")
+    finally:
+        conn.close()
     subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"], capture_output=True)
     if os.path.exists(LAUNCH_AGENT_PLIST):
         os.remove(LAUNCH_AGENT_PLIST)
@@ -115,6 +162,8 @@ def main():
         cli_history()
     elif cmd in ("--ledger", "--dashboard", "--report", "--optimize", "--import-export"):
         _ledger_cli(cmd, sys.argv[2:])
+    elif cmd in ("--yield", "--yield-install", "--yield-remove"):
+        _yield_cli(cmd, sys.argv[2:])
     elif cmd == "--demo":
         _demo()
     elif cmd == "--screenshots":
@@ -123,6 +172,8 @@ def main():
         _cleanup()
     elif cmd in ("--help", "-h"):
         print(USAGE)
+    elif cmd and cmd.startswith("-"):
+        sys.exit(f"tokencoach: unknown option {cmd}\n\n{USAGE}")     # a typo must not start a second app
     else:
         from tokencoach.ui import TokenCoachApp
         TokenCoachApp().run()

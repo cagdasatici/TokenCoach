@@ -456,6 +456,16 @@ class ReportAndOptimizer(LedgerTestCase):
         ])
         self.ingest()
 
+    def test_dashboard_provider_filter_always_starts_on_all(self):
+        # The app serves the dashboard on a fixed port, so localStorage outlives
+        # every launch. Restoring the saved controls must not bring back an old
+        # "Claude" pick, which would hide ChatGPT/Codex and its warnings.
+        from tokencoach.ledger_report import DASHBOARD_JS
+        restore = DASHBOARD_JS.index("localStorage.getItem('tokencoach-dash')")
+        reset = DASHBOARD_JS.index("S.group = DEFAULT.group")
+        self.assertGreater(reset, restore)
+        self.assertIn("group:'all'", DASHBOARD_JS)
+
     def test_dashboard_escape_covers_single_quotes(self):
         from tokencoach.ledger_report import DASHBOARD_JS
         esc = next(l for l in DASHBOARD_JS.splitlines() if l.startswith("const esc ="))

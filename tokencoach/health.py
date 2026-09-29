@@ -237,6 +237,25 @@ def _names(labels: list[str]) -> str:
     return " and ".join(labels) if len(labels) < 3 else ", ".join(labels[:-1]) + " and " + labels[-1]
 
 
+def _watch_detail(w: dict, now: float, named: bool) -> str:
+    """One sentence about an amber window. `named` puts the provider first,
+    for when several are listed together; alone, the headline already names it."""
+    who, reset = w["label"], w.get("reset_ts")
+    if w["kind"] == "5h" and w["runs_out"]:
+        spare = (reset - w["runs_out"]) / 60 if reset else None
+        return ((f"{who} will" if named else "At this pace you'll")
+                + f" reach the 5-hour limit in about {_mins((w['runs_out'] - now) / 60)}"
+                + (f", {_mins(spare)} before it resets." if spare else "."))
+    if w["kind"] == "5h":
+        return ((f"{who} has {w['left']}% of its 5-hour window left" if named
+                 else f"{w['left']}% of the 5-hour window is left")
+                + (f"; it resets {_clock(reset, now)}." if reset else "."))
+    if w["runs_out"]:
+        return ((f"{who} will reach its weekly limit" if named else "At this pace you'll reach it")
+                + f" {_clock(w['runs_out'], now)}, before it resets {_clock(reset, now)}.")
+    return f"{who} has {w['left']}% of its week left." if named else f"{w['left']}% of the week is left."
+
+
 def overall(quota: dict, habits: dict, now: float | None = None) -> dict:
     """The page headline: state, one-line headline, a sentence or two of
     detail, and at most one action (a Coach lesson to look at)."""
@@ -261,23 +280,23 @@ def overall(quota: dict, habits: dict, now: float | None = None) -> dict:
         detail = (f"{other['label']} has {other['left']}% left, so switch there to keep working."
                   if other else "Nothing to do but wait for the reset.")
     elif watch:
-        w = watch[0]
+        # one window per provider, most urgent first: every amber provider is named
+        first = {}
+        for w in watch:
+            first.setdefault(w["provider"], w)
+        per = list(first.values())
+        w, many = per[0], len(per) > 1
+        who = _names([p["label"] for p in per])
         if w["kind"] == "5h" and w["runs_out"]:
-            headline = f"Slow down on {w['label']}"
-            spare = (w["reset_ts"] - w["runs_out"]) / 60 if w.get("reset_ts") else None
-            detail = (f"At this pace you'll reach the 5-hour limit in about "
-                      f"{_mins((w['runs_out'] - now) / 60)}"
-                      + (f", {_mins(spare)} before it resets." if spare else "."))
+            headline = f"Slow down on {who}"
         elif w["kind"] == "5h":
-            headline = f"{w['label']} is running low"
-            detail = f"{w['left']}% of the 5-hour window is left" + (
-                f"; it resets {_clock(w['reset_ts'], now)}." if w.get("reset_ts") else ".")
+            headline = f"{who} are running low" if many else f"{who} is running low"
         else:
-            headline = f"Watch {w['label']}'s weekly limit"
-            detail = (f"At this pace you'll reach it {_clock(w['runs_out'], now)}, before it resets "
-                      f"{_clock(w['reset_ts'], now)}." if w["runs_out"] else
-                      f"{w['left']}% of the week is left.")
-        other = alt(w["provider"])
+            headline = f"Watch {who}" if many else f"Watch {who}'s weekly limit"
+        detail = " ".join(_watch_detail(p, now, many) for p in per)
+        # a healthy provider is somewhere to keep working; an amber one isn't
+        watched = {p["provider"] for p in per}
+        other = next((o for o in best_5h if o["provider"] not in watched), None)
         if other:
             detail += f" {other['label']} has {other['left']}% left."
     elif habits.get("state") == WATCH:

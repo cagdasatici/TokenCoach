@@ -122,7 +122,7 @@ class Packaging(unittest.TestCase):
     def test_no_prerename_names_outside_migration_code(self):
         allowed = {"install.sh", "claude_bar.py", "tokencoach/legacy.py", "tokencoach/config.py",
                    "tokencoach/ledger.py", "tests/test_release.py", "AGENTS.md", "README.md", "LICENSE",
-                   "tokencoach/ui.py"}
+                   "tokencoach/ui.py", "docs/plans/2026-09-29-remaining-release-work.md"}
         files = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
         offenders = []
         for f in files:

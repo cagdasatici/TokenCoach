@@ -73,6 +73,41 @@ class OverallTest(unittest.TestCase):
         self.assertEqual((o["state"], o["headline"]), (WATCH, "Slow down on Codex"))
         self.assertIn("about 40 min", o["detail"])
 
+    def test_both_providers_amber_are_both_named(self):
+        q = health.quota_health([w("claude", "5h", 64, 2 * H, eta=40),
+                                 w("codex", "5h", 64, 2 * H, eta=50)], NOW)
+        self.assertEqual(q["providers"], {"claude": WATCH, "codex": WATCH})
+        o = health.overall(q, {"state": UNKNOWN}, NOW)
+        self.assertEqual((o["state"], o["headline"]), (WATCH, "Slow down on Claude and Codex"))
+        self.assertIn("Claude will reach the 5-hour limit in about 40 min", o["detail"])
+        self.assertIn("Codex will reach the 5-hour limit in about 50 min", o["detail"])
+        # neither is somewhere to switch to, so no "has N% left" fallback
+        self.assertNotIn("% left", o["detail"])
+        self.assertIn("Claude and Codex", health.menu_line(q, NOW))
+
+    def test_most_urgent_provider_is_named_first(self):
+        q = health.quota_health([w("claude", "5h", 64, 2 * H, eta=60),
+                                 w("codex", "5h", 64, 2 * H, eta=30)], NOW)
+        self.assertEqual(health.overall(q, {"state": UNKNOWN}, NOW)["headline"],
+                         "Slow down on Codex and Claude")
+
+    def test_both_running_low_and_both_weekly_watch(self):
+        q = health.quota_health([w("claude", "5h", 20, 2 * H), w("codex", "5h", 25, 2 * H)], NOW)
+        o = health.overall(q, {"state": UNKNOWN}, NOW)
+        self.assertEqual(o["headline"], "Claude and Codex are running low")
+        self.assertIn("Claude has 20%", o["detail"])
+        self.assertIn("Codex has 25%", o["detail"])
+        q = health.quota_health([w("claude", "week", 40, 3.5 * D), w("codex", "week", 35, 3.5 * D)], NOW)
+        o = health.overall(q, {"state": UNKNOWN}, NOW)
+        self.assertEqual(o["headline"], "Watch Codex and Claude")
+        self.assertEqual(o["detail"].count("weekly limit"), 2)
+
+    def test_one_amber_provider_still_points_at_the_healthy_one(self):
+        q = health.quota_health([w("claude", "5h", 64, 2 * H), w("codex", "5h", 64, 2 * H, eta=40)], NOW)
+        o = health.overall(q, {"state": UNKNOWN}, NOW)
+        self.assertEqual(o["headline"], "Slow down on Codex")
+        self.assertIn("Claude has 64% left", o["detail"])
+
     def test_habits_alone_reach_amber_never_red(self):
         q = health.quota_health([w("claude", "5h", 90, 2 * H)], NOW)
         habits = {"state": WATCH, "change": 0.4, "tip": "Start fresh.", "lesson": {"id": "l1", "title": "T"}}

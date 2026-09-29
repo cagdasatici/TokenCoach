@@ -131,7 +131,66 @@ def build(conn, now: float | None = None, days: int = 70, seed: int = 5) -> dict
                      "VALUES (:provider, :window, :ts, :pct)", samples)
     ledger.attribute_quota(conn)
     conn.commit()
-    return {"prompts": len(prompts), "calls": len(calls), "lesson_day": lesson_day}
+    return {"prompts": len(prompts), "calls": len(calls), "lesson_day": lesson_day, "now": now}
+
+
+# Projects the sample developer tracks for yield (all run Claude Code), and what they touch.
+YIELD_FILES = {
+    "storefront":   ["src/api/orders.ts", "src/store/cart.ts", "tests/checkout.spec.ts", "src/lib/money.ts"],
+    "payments-api": ["lib/webhooks.py", "jobs/reconcile.py", "migrations/0042_payments_idx.sql"],
+    "mobile-app":   ["app/screens/Settings.tsx", "app/components/Form.tsx"],
+}
+COMMIT_SUBJECTS = ["Add pagination to the orders endpoint", "Retry webhooks with exponential backoff",
+                   "Convert settings screen to the new form components", "Add index on payments(created_at)",
+                   "Rename getUserCart to loadCart", "Add unit tests for the currency formatter",
+                   "Cache the reconcile lookup", "Show order totals with tax"]
+FIX_SUBJECTS = ["Fix off-by-one in pagination cursor", "Fix flaky checkout test", "Fix webhook retry storm",
+                "Fix rounding in totals", "Fix settings form validation"]
+
+
+def seed_yield(conn, now: float, seed: int = 11) -> None:
+    """Sample commits for the Claude Code sessions above, so the dashboard's
+    'What it produced' has something to show. Fictional repositories and invented
+    rates (a little better after the lesson, which the one-week wait hides for now);
+    git is never run."""
+    rng = random.Random(seed)
+    lesson_day = now - 12 * 86400
+    paths = {name: os.path.expanduser(PROJECTS[name][1]) for name in YIELD_FILES}
+    for path in paths.values():
+        conn.execute("INSERT OR REPLACE INTO yield_repos (path, worktrees, scanned, since) VALUES (?, ?, ?, ?)",
+                     (path, json.dumps([path]), now, now - 200 * 86400))
+    # a realistic spread of files, so one fix doesn't count against every recent commit
+    pool = {name: files + [f"src/module_{i:02d}.{files[0].rsplit('.', 1)[1]}" for i in range(40)]
+            for name, files in YIELD_FILES.items()}
+    marks = ",".join("?" * len(paths))
+    sessions = conn.execute(
+        f"SELECT session_id, project, MIN(ts) t0, MAX(ts) t1 FROM calls WHERE source = 'claude_code' "
+        f"AND project IN ({marks}) GROUP BY session_id ORDER BY t0", list(paths)).fetchall()
+    n = 0
+
+    def add(repo, session, ts, subject, files, reverted=None, gone=None):
+        nonlocal n
+        n += 1
+        conn.execute("INSERT INTO commits (repo, sha, session_id, ts, subject, files, first_seen, reverted_ts, gone_ts) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     (repo, f"demo-commit-{n}", session, ts, subject, json.dumps(files), ts, reverted, gone))
+
+    for s in sessions:
+        repo, after = paths[s["project"]], s["t0"] >= lesson_day
+        for _ in range(rng.choices([0, 1, 2, 3], weights=[2, 4, 3, 1])[0]):
+            ts = s["t1"] + rng.uniform(30, 900)
+            files = rng.sample(pool[s["project"]], rng.randint(1, 2))
+            subject = rng.choice(COMMIT_SUBJECTS)
+            reverted = ts + rng.uniform(0.2, 3) * 86400 if rng.random() < (0.04 if after else 0.10) else None
+            gone = ts + rng.uniform(0.2, 5) * 86400 if rng.random() < (0.03 if after else 0.07) else None
+            add(repo, s["session_id"], ts, subject, files, reverted, gone)
+            if reverted and reverted < now:
+                add(repo, None, reverted, f'Revert "{subject}"', files)
+            if rng.random() < (0.12 if after else 0.24):
+                fix_ts = ts + rng.uniform(0.3, 4) * 86400
+                if fix_ts < now:
+                    add(repo, None, fix_ts, rng.choice(FIX_SUBJECTS), files[:1])
+    conn.commit()
 
 
 def seed_coach(conn, demo_home: str, lesson_day: float) -> None:
@@ -215,6 +274,7 @@ def prepare(data_dir: str) -> str:
             pass
     conn = ledger.open_ledger(os.path.join(data_dir, "ledger.db"))
     facts = build(conn)
+    seed_yield(conn, facts["now"])
     seed_coach(conn, os.path.join(data_dir, "demo-home"), facts["lesson_day"])
     conn.close()
     return data_dir

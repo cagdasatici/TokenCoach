@@ -261,6 +261,28 @@ CREATE TABLE IF NOT EXISTS templates (
     text       TEXT NOT NULL,
     source_prompt_id TEXT
 );
+CREATE TABLE IF NOT EXISTS yield_repos (
+    path      TEXT PRIMARY KEY,          -- main worktree of a repository the person opted in
+    worktrees TEXT NOT NULL DEFAULT '[]',-- JSON list of every worktree path, for matching sessions by folder
+    scanned   REAL,
+    since     REAL,                      -- when tracking began: earlier sessions could never have been tagged
+    git_dir   TEXT                       -- the repository's shared git folder: one repository, however it is reached
+);
+CREATE TABLE IF NOT EXISTS commits (
+    repo        TEXT NOT NULL,
+    sha         TEXT NOT NULL,
+    session_id  TEXT,                    -- Claude-Session trailer; NULL for commits made by hand
+    ts          REAL NOT NULL,           -- commit time
+    subject     TEXT NOT NULL,
+    files       TEXT NOT NULL,           -- JSON list of paths touched
+    first_seen  REAL NOT NULL,
+    reverted_ts REAL,                    -- when a later commit reverted this one
+    gone_ts     REAL,                    -- first scan that found it on no branch or tag any more
+    superseded  INTEGER NOT NULL DEFAULT 0,  -- gone, but the same patch lives on in another commit
+    PRIMARY KEY (repo, sha)
+);
+CREATE INDEX IF NOT EXISTS idx_commits_session ON commits(session_id);
+CREATE INDEX IF NOT EXISTS idx_commits_repo_ts ON commits(repo, ts);
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -275,7 +297,7 @@ SOURCE_PROVIDER = {
 
 
 # Bump whenever SCHEMA or _migrate changes, so existing ledgers pick it up.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def open_ledger(path: str = LEDGER_DB, timeout: float = 30) -> sqlite3.Connection:
@@ -298,6 +320,12 @@ def _migrate(conn):
     cols = {r[1] for r in conn.execute("PRAGMA table_info(prompts)")}
     if "cwd" not in cols:
         conn.execute("ALTER TABLE prompts ADD COLUMN cwd TEXT")
+    yield_cols = {r[1] for r in conn.execute("PRAGMA table_info(yield_repos)")}
+    for col, kind in (("since", "REAL"), ("git_dir", "TEXT")):
+        if yield_cols and col not in yield_cols:
+            conn.execute(f"ALTER TABLE yield_repos ADD COLUMN {col} {kind}")
+    # a repository registered before start times were kept: date it from its first scan
+    conn.execute("UPDATE yield_repos SET since = scanned WHERE since IS NULL AND scanned IS NOT NULL")
     lesson_cols = {r[1] for r in conn.execute("PRAGMA table_info(lessons)")}
     if "edited" not in lesson_cols:
         conn.execute("ALTER TABLE lessons ADD COLUMN edited INTEGER NOT NULL DEFAULT 0")

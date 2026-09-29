@@ -86,6 +86,34 @@ $ per prompt, agent responses per prompt, session length, peak context and quota
 samples are marked. It is an observed change, not a controlled test: other things change too,
 so read it as a hint about which habits pay off.
 
+### 5. Yield: what the spend produced (optional, per repository)
+
+Spend says little without what it bought. Track a git repository and TokenCoach ties each Claude
+Code session's cost to the commits it made, then judges those commits a week later:
+
+```sh
+tokencoach --yield-install ~/code/my-repo    # once per repository
+tokencoach --yield                           # the numbers; also in the dashboard
+tokencoach --yield-remove ~/code/my-repo     # undo
+```
+
+This adds a git `prepare-commit-msg` hook that appends a `Claude-Session: <id>` line to commits
+made *inside Claude Code*. Commits you make in a terminal get nothing, and the hook never blocks a
+commit. It refuses to touch a hook that isn't its own, and a `core.hooksPath` outside the
+repository. The dashboard's **What it produced** shows, by week and by model:
+
+- **Cost per accepted change**: session cost ÷ accepted commits. Sessions that made no commit
+  count against it.
+- **Prompts per accepted change**: how much of your attention each surviving commit took.
+- **Rework**: the share of commits followed within 7 days by a fix (a commit whose subject says
+  fix, bug, regression or revert) to one of the same files.
+
+A commit is *accepted* once it is a week old and, in that week, was neither reverted nor dropped
+from every branch. Younger work is listed as pending and not judged. Two things to know: "dropped"
+is noticed by TokenCoach's own scans, so squash-merging and then deleting a branch counts as
+dropped, and on a file that many commits touch, one fix counts against all of them. Compare a
+period with an earlier one measured the same way, not with an absolute target.
+
 <details>
 <summary><b>Advanced view</b>: quota over time, when you work, breakdowns, sessions</summary>
 <br>
@@ -160,7 +188,8 @@ like its closest published sibling and labelled *estimated*. Override anything i
 - **Everything stays on your Mac.** The ledger is a local SQLite file; the dashboard is served
   only on `127.0.0.1`, behind a per-install key.
 - **What is read:** Claude Code transcripts (`~/.claude/projects`), Cowork logs, Codex sessions
-  (`~/.codex/sessions`), and, for the quota bars, your claude.ai / chatgpt.com session cookies
+  (`~/.codex/sessions`), commit messages, dates and file names (`git log`) of repositories you
+  chose to track, and, for the quota bars, your claude.ai / chatgpt.com session cookies
   from your browser (macOS may ask for Keychain access once). Cookies are only ever sent to
   claude.ai / chatgpt.com.
 - **What leaves, and only when you click:** **Analyze deeper** and **Improve** send a digest of
@@ -169,8 +198,8 @@ like its closest published sibling and labelled *estimated*. Override anything i
   typically $0.03–0.12 API-equivalent per run, and TokenCoach tracks it like any other session.
 - **What changes on your Mac:** a login agent, a small watchdog that restarts the app if it
   dies, the Claude Code hook (a backup of `~/.claude/settings.json` is written first, and you
-  can turn nudges off in the menu), and lesson blocks you choose to apply. The uninstaller
-  removes all of it.
+  can turn nudges off in the menu), lesson blocks you choose to apply, and a git hook in each
+  repository you track with `--yield-install`. The uninstaller removes all of it.
 
 ## Troubleshooting
 

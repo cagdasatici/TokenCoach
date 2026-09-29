@@ -286,6 +286,7 @@ const GROUPS = {all:'All', claude:'Claude', openai:'OpenAI'};
 const grp = src => D.provider[src] === 'claude' ? 'claude' : 'openai';
 let S = {...DEFAULT};
 try { Object.assign(S, JSON.parse(localStorage.getItem('tokencoach-dash') || '{}')); } catch (e) {}
+S.group = DEFAULT.group;   // a saved "Claude" pick would hide the other provider; always open on All
 if (QS.get('view')) S.adv = QS.get('view') === 'advanced';     // for links and screenshots
 if (QS.get('range')) S.range = QS.get('range');
 const save = () => { try { localStorage.setItem('tokencoach-dash', JSON.stringify(S)); } catch (e) {} };
@@ -807,6 +808,39 @@ function sessions(rows) {
     '</table><p class="note">Peak context is the largest single request. A session whose context keeps growing re-reads it on every response.</p>';
 }
 
+// ── yield: what the spend produced ────────────────────────────────────────
+function yieldCard() {
+  const Y = D.yield, sec = $('#card-yield');
+  if (!Y) { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+  const o = Y.overall, p0 = v => v == null ? '—' : Math.round(v * 100) + '%', r1 = v => v == null ? '—' : v.toFixed(1);
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  $('#y-sub').textContent = `Commits from Claude Code sessions, judged ${Y.settle_days} days after they were made`;
+  const notes = [];
+  if (!o.sessions) {
+    $('#y-tiles').innerHTML = '';
+    $('#y-tables').innerHTML = `<div class="empty">Nothing to judge yet: the first numbers appear ${Y.settle_days} days after the first commit tagged with a Claude-Session line.</div>`;
+  } else {
+    const T = [
+      ['Cost per accepted change', usd(o.cost_per_accepted), `${o.accepted} of ${plural(o.commits, 'commit')} held`],
+      ['Prompts per accepted change', r1(o.prompts_per_accepted), 'your attention per surviving commit'],
+      ['Held', p0(o.accepted_rate), `${o.reverted} reverted, ${o.rewritten} dropped`],
+      ['Rework', p0(o.rework_rate), 'commits followed by a fix to the same files'],
+    ];
+    $('#y-tiles').innerHTML = T.map(([k, v, d]) => `<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join('');
+    const table = (list, head, name) => `<table><tr><th>${head}</th><th class="n">Sessions</th><th class="n">$</th><th class="n">Commits</th><th class="n">Accepted</th><th class="n">$ / accepted</th><th class="n">Prompts / accepted</th><th class="n">Rework</th></tr>` +
+      list.map(r => `<tr><td>${esc(name(r.key))}</td><td class="n">${r.sessions}</td><td class="n">${usd(r.cost)}</td><td class="n">${r.commits}</td><td class="n">${r.accepted}</td><td class="n">${usd(r.cost_per_accepted)}</td><td class="n">${r1(r.prompts_per_accepted)}</td><td class="n">${p0(r.rework_rate)}</td></tr>`).join('') + '</table>';
+    const week = k => 'Week of ' + new Date(k + 'T00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+    $('#y-tables').innerHTML = `<div class="scroll" style="margin-top:18px">${table(Y.by_week, 'Week', week)}</div>` +
+      `<div class="adv scroll" style="margin-top:18px">${table(Y.by_model, 'Model (the one that cost most in the session)', modelLabel)}</div>`;
+    if (o.idle_sessions) notes.push(`${plural(o.idle_sessions, 'session')} (${usd(o.idle_cost)}) made no commit; their cost is included above.`);
+  }
+  if (Y.pending.sessions) notes.push(`${plural(Y.pending.sessions, 'session')} and ${plural(Y.pending.commits, 'commit')} are under ${Y.settle_days} days old and not counted yet.`);
+  notes.push(`${Y.coverage.tagged} of ${plural(Y.coverage.commits, 'commit')} in the tracked repositories carry a session tag; commits made by hand do not.`);
+  notes.push(`Dropped means a commit left every branch within a week, as noticed by TokenCoach's own scans (squash-merging and then deleting a branch counts as dropped). Rework means a later commit whose subject mentions a fix and that touches the same files.`);
+  $('#y-note').innerHTML = notes.map(esc).join('<br>');
+}
+
 // ── prompts (simple: top 5 · advanced: searchable list) ──────────────────
 let promptLimit = 30;
 function promptAgg(rows) {
@@ -858,7 +892,7 @@ function prompts(rows) {
 function render() {
   V = view();
   const [lo, hi] = rangeBounds(S.range), rows = filtered(lo, hi), prev = filtered(lo - (hi - lo), lo);
-  controls(lo, hi); tiles(rows, prev); coach(); timeline(rows, lo, hi); topPrompts(rows); templates();
+  controls(lo, hi); tiles(rows, prev); coach(); yieldCard(); timeline(rows, lo, hi); topPrompts(rows); templates();
   if (S.adv) {
     quotaChart(lo, hi); heatmap(rows);
     breakdown($('#by-project'), rows, f => f.proj, 'project');
@@ -917,6 +951,8 @@ PAGE = """<!doctype html>
 <section id="card-timeline"><div class="sh"><h2 id="tl-title">Spending</h2><span class="sub" id="tl-sub"></span><span class="spacer"></span><span class="seg adv" id="metric"></span></div>
   <div class="card"><div class="kpis" id="tiles"></div><div class="chart" id="timeline"></div>
   <div class="legend" id="tl-legend"></div><div class="value-note" id="value-note"></div></div></section>
+<section id="card-yield" style="display:none"><div class="sh"><h2>What it produced</h2><span class="sub" id="y-sub"></span></div>
+  <div class="card"><div class="kpis" id="y-tiles"></div><div id="y-tables"></div><div class="value-note" id="y-note"></div></div></section>
 <section id="card-top"><div class="sh"><h2>Costliest prompts</h2><span class="sub">Improve rewrites one into a tighter version you can reuse</span></div>
   <div class="list" id="top"></div></section>
 <section id="templates-card" style="display:none"><div class="sh"><h2>Your prompt templates</h2></div><div class="list" id="templates"></div></section>
@@ -1028,6 +1064,12 @@ def dashboard_data(conn, config: dict | None = None, days: int = DASHBOARD_DAYS)
     except Exception:
         log.exception("health failed")
         health_data = None
+    try:
+        from tokencoach import yield_metrics
+        yield_data = yield_metrics.snapshot(conn, now)
+    except Exception:
+        log.exception("yield metrics failed")
+        yield_data = None
     advice = sorted(glob.glob(os.path.join(REPORT_DIR, "optimizer-*.md")))
     last_analysis = None
     if advice:
@@ -1040,7 +1082,7 @@ def dashboard_data(conn, config: dict | None = None, days: int = DASHBOARD_DAYS)
         "models": models, "prompts": prompts, "facts": facts, "quota": quota,
         "plans": config.get("ledger_plans") or {},
         "has_chat": bool(present & {"claude_chat", "chatgpt_chat"}),
-        "coach": coach_data, "last_analysis": last_analysis,
+        "coach": coach_data, "yield": yield_data, "last_analysis": last_analysis,
         "nudges_on": True if DEMO else nudge.is_installed(), "demo": DEMO,
         "home": os.path.join(os.path.dirname(ledger.LEDGER_DB), "demo-home") if DEMO else os.path.expanduser("~"),
         "equivalents": {m: ledger.equivalent_model(m, ledger.ledger_overrides(config))

@@ -27,6 +27,13 @@ if nudge.is_installed():
     nudge.uninstall()
     print('  ✓  Claude Code nudge hook removed (settings backup kept)')
 " ) 2>/dev/null || true
+  # git hooks added by --yield-install (commit history and the repository list stay in the data folder)
+  ( cd "$INSTALL_DIR" && "$INSTALL_DIR/.venv/bin/python3" -c "
+from tokencoach import ledger, yield_metrics
+conn = ledger.open_ledger()
+for repo in yield_metrics.remove_hooks(conn):
+    print('  ✓  Git hook removed from ' + repo)
+" ) 2>/dev/null || true
 fi
 
 if crontab -l 2>/dev/null | grep -q "tokencoach-doctor.sh"; then

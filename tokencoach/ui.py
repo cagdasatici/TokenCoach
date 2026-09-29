@@ -2397,6 +2397,11 @@ class TokenCoachApp(rumps.App):
                         except Exception:
                             log.exception("lesson detection failed")
                     try:
+                        from tokencoach import yield_metrics
+                        yield_metrics.refresh(conn)      # commits of repositories the person opted in
+                    except Exception:
+                        log.exception("commit scan failed")
+                    try:
                         from tokencoach.ledger_report import write_report
                         write_report(conn, self.config)
                     except Exception:
