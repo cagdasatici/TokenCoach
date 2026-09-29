@@ -385,7 +385,7 @@ class CodexQuotaEndToEnd(LedgerTestCase):
         q = {c["id"]: c["quota_5h_pct"] for c in self.calls()}
         self.assertIsNone(q["openai:r1"])        # first sample is the baseline
         self.assertAlmostEqual(q["openai:r2"], 3.0)
-        self.assertIsNone(q["openai:r3"])
+        self.assertEqual(q["openai:r3"], 0)     # sampled, no rise: measured as nothing
         # appending more samples later keeps the level; no double count
         _jl(self.root / "codex/2026/09/27/rollout-a.jsonl", [
             _codex_record("r4", "2026-09-27T10:00:30Z"),
@@ -411,6 +411,41 @@ class CodexQuotaEndToEnd(LedgerTestCase):
         q = {c["id"]: c["quota_5h_pct"] for c in self.calls()}
         self.assertAlmostEqual(sum(q.values()), 10.0)
         self.assertGreater(q["anthropic:m2"], q["anthropic:m1"])
+
+    def _two_calls_with_samples(self, samples):
+        _jl(self.root / "claude/p/s1.jsonl", [
+            _cc_user("u1", "go", "2026-09-27T10:00:00Z"),
+            _cc_asst("m1", "2026-09-27T10:01:00Z"),
+            _cc_asst("m2", "2026-09-27T10:02:00Z"),
+        ])
+        self.ingest()
+        base = ledger._ts("2026-09-27T10:00:00Z")
+        self.conn.executemany("INSERT INTO quota_samples VALUES ('claude','5h',?,?)",
+                              [(base + dt, pct) for dt, pct in samples])
+        ledger.attribute_quota(self.conn)
+        return {c["id"]: c["quota_5h_pct"] for c in self.calls()}
+
+    def test_flat_sampled_interval_is_zero_not_unknown(self):
+        q = self._two_calls_with_samples([(30, 20), (300, 20)])
+        self.assertEqual(q, {"anthropic:m1": 0, "anthropic:m2": 0})
+
+    def test_calls_outside_sampled_intervals_stay_unknown(self):
+        # before the first sample, and across a gap too long to attribute
+        q = self._two_calls_with_samples([(90, 20), (90 + ledger.MAX_SAMPLE_GAP + 1, 20)])
+        self.assertIsNone(q["anthropic:m1"])
+        self.assertIsNone(q["anthropic:m2"])
+
+    def test_flat_then_rise_only_the_rise_carries_quota(self):
+        q = self._two_calls_with_samples([(30, 20), (90, 20), (150, 25)])
+        self.assertEqual(q["anthropic:m1"], 0)
+        self.assertAlmostEqual(q["anthropic:m2"], 5.0)
+
+    def test_older_attribution_is_redone(self):
+        self._two_calls_with_samples([(30, 20), (300, 20)])
+        self.conn.execute("UPDATE calls SET quota_5h_pct = NULL")
+        ledger._meta_set(self.conn, "attribution_version", "2")
+        ledger.attribute_quota(self.conn)
+        self.assertEqual([c["quota_5h_pct"] for c in self.calls()], [0, 0])
 
 
 class Summaries(LedgerTestCase):

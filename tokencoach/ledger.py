@@ -756,7 +756,7 @@ MAX_SAMPLE_GAP = 6 * 3600
 # A fall of at least this many points means the window reset. Smaller dips are
 # noise: parallel sessions report slightly stale readings of the same counter.
 RESET_DROP = 30
-ATTRIBUTION_VERSION = "2"
+ATTRIBUTION_VERSION = "3"
 
 
 def quota_increments(samples, level: float | None = None):
@@ -816,6 +816,15 @@ def attribute_quota(conn):
             # level is already stored, so start the walk from it.
             increments, level = _increments_list([(r["ts"], r["pct"]) for r in samples], level)
             marks = ",".join("?" * len(sources))
+            # A sampled interval where used-% did not rise cost nothing measurable:
+            # its calls get 0, not NULL. NULL stays for calls no pair of samples covers.
+            for a, b in zip(samples, samples[1:]):
+                if b["ts"] - a["ts"] <= MAX_SAMPLE_GAP:
+                    conn.execute(
+                        f"UPDATE calls SET {col} = 0 WHERE {col} IS NULL AND source IN ({marks}) "
+                        f"AND ts > ? AND ts <= ? AND estimated = 0",
+                        (*sources, a["ts"], b["ts"]),
+                    )
             for a_ts, b_ts, delta in increments:
                 if b_ts - a_ts > MAX_SAMPLE_GAP:
                     continue
