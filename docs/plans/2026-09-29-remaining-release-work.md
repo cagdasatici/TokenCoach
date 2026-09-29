@@ -27,7 +27,8 @@ Goal: each path below gets a record (template at the end). Existing user data su
 
 ### Before starting
 
-- **Decide what "previous version" and "new version" are.** Homebrew installs the release tarball in `Formula/tokencoach.rb` (currently v1.1.0), so testing `brew upgrade` needs a new tag (for example v1.1.1 with the commits above), its tarball, and a formula bump. The git install path can instead be tested by pinning `~/.tokencoach` to v1.1.0 and letting auto-update fast-forward to `main`.
+- **Decided 2026-09-29: previous = v1.1.0, new = v1.2.0** (yield and the schema 5 bump make it a minor release). Nothing is tagged or published until A–H pass. Homebrew installs the release tarball in `Formula/tokencoach.rb` (currently v1.1.0), so test `brew upgrade` with a locally built `git archive` tarball (it reproduces the published hash) and publish afterwards; steps are in [release-acceptance-1.2.0.md](../release-acceptance-1.2.0.md). The git install path is tested by pinning `~/.tokencoach` to v1.1.0 and letting auto-update fast-forward to `main`.
+- **Pre-checked on the owner's Mac (2026-09-29, `18a3c14`):** 259 tests pass; a v1.1.0 ledger opens with HEAD (user_version 1 → 5, rows and applied lesson kept); the no-launch installer leaves the system untouched. Details in the record file.
 - **On the Mac mini:** a fresh macOS user account created by the owner (not a copy of this Mac's), Xcode installed for path G, and the macOS version recorded (`sw_vers`).
 - **Record** `git rev-parse HEAD` of the checkout or tag being tested, and `tokencoach --version` if it exists (otherwise the formula version or `git -C ~/.tokencoach rev-parse HEAD`).
 - **Useful probes:**

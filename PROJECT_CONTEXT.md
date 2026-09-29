@@ -30,7 +30,7 @@ A navigation snapshot, not a replacement for requirements or live evidence. Upda
 
 ## Open
 
-- Release acceptance (TC3, planned on a fresh Mac mini) and the optional coaching experiment (TC4): `docs/plans/2026-09-29-remaining-release-work.md`. TC1, TC2 and their code follow-ups (flat intervals, dashboard quota gaps, screenshots) are done. The release after TC3 should bump the version and tag it (yield bumps the ledger schema to 5).
+- Release acceptance (TC3, planned on a fresh Mac mini) and the optional coaching experiment (TC4): `docs/plans/2026-09-29-remaining-release-work.md`. TC1, TC2 and their code follow-ups (flat intervals, dashboard quota gaps, screenshots) are done. The release after TC3 is **v1.2.0**, tagged and published only after TC3 passes (yield bumps the ledger schema to 5). Acceptance records: `docs/release-acceptance-1.2.0.md`.
 - Codex has no prompt hook, so Codex gets coaching through AGENTS.md lessons only.
 - Seats (WS1) and enforced gates (WS2) from the handoff brief are not started; the brief wants two weeks of yield baseline first. Confirm the trailer once in the terminal CLI (only verified in the desktop app).
 - Release: `Formula/tokencoach.rb` needs no change for yield (the hook runs `python -m tokencoach.trailer`), but `uninstall.sh` and `--cleanup` now also remove repo hooks.

@@ -1,0 +1,130 @@
+# TokenCoach v1.2.0: release acceptance
+
+Plan: [remaining release work](plans/2026-09-29-remaining-release-work.md), TC3.
+Status: **pre-checks done, paths A–H not run** (waiting for the Mac mini, due about 2026-10-02).
+
+- **Release candidate:** the commit on `main` that gets tagged `v1.2.0`. Nothing is tagged yet. The code has no version string, so the tag and `Formula/tokencoach.rb` are the version. Fill in the real SHA when the mini session starts: `git rev-parse HEAD`.
+- **Previous version:** `v1.1.0` (formula at v1.1.0, ledger schema 1).
+- **New version:** v1.2.0 (ledger schema 5, yield, quota attribution).
+- **Machine:** Mac mini `<model>`, macOS `<sw_vers>`, fresh account created by the owner.
+
+## Pre-checks on the owner's Mac (2026-09-29, revision `18a3c14`)
+
+These did not touch the running install: scratch `HOME`, scratch data dir.
+
+| Check | Result |
+|---|---|
+| `python -m unittest discover -s tests` | 259 tests pass |
+| Ledger upgrade v1.1.0 → `18a3c14`: build a ledger with v1.1.0's code from synthetic logs (12 prompts, 24 calls, one applied lesson), open it with HEAD's code, refresh twice | `user_version` 1 → 5 (= `ledger.SCHEMA_VERSION`), counts unchanged at 12 and 24, lesson still `applied` |
+| `TOKENCOACH_NO_LAUNCH=1 TOKENCOACH_DIR=<scratch> TOKENCOACH_REPO=$PWD bash install.sh` with scratch `HOME` | exit 0, installed `18a3c14`, self-check passed, no LaunchAgents written, repo clean |
+
+Limits: synthetic logs, ledger only. The instruction-file block, nudge setting, menu bar icon, single-process check and everything in A–H still need the mini.
+
+## Building the v1.2.0 tarball locally (paths B and C, brew)
+
+Release process: `git archive` tarball named `TokenCoach-X.Y.Z.tar.gz`. Checked on 2026-09-29: with `--prefix=TokenCoach-1.1.0/` it reproduces the published v1.1.0 hash exactly, so the local tarball for the tested commit will match the one published later from the same commit.
+
+```sh
+git clone https://github.com/cagdasatici/TokenCoach && cd TokenCoach
+git checkout <tested sha>
+git archive --format=tar.gz --prefix=TokenCoach-1.2.0/ HEAD > ~/TokenCoach-1.2.0.tar.gz
+shasum -a 256 ~/TokenCoach-1.2.0.tar.gz
+```
+
+For `brew upgrade`: install from the tap with the formula at v1.1.0, then change `url` and `sha256` in the tapped formula to the local tarball (`file://…`, or `http://127.0.0.1:<port>/…` from `python3 -m http.server` if brew refuses `file://`), set `HOMEBREW_NO_AUTO_UPDATE=1`, and run `brew upgrade tokencoach`. Not tried yet; record what actually worked.
+
+Publishing (tag, GitHub release asset, formula bump to the real URL and hash) happens after A–H pass, not before.
+
+## Records
+
+Template from the plan. One block per path; replace "not run" as each is done.
+
+```
+Path:            A  Fresh install, one-line installer
+Revision:        <sha>            Install method: script
+Machine / macOS: Mac mini <model>, macOS <sw_vers>
+Steps run:       curl -fsSL https://raw.githubusercontent.com/cagdasatici/TokenCoach/main/install.sh | bash; log out and in
+Expected:        ◆ in menu bar; LaunchAgents .tokencoach, .doctor, .widgethost loaded; ~/.tokencoach; data in ~/Library/Application Support/TokenCoach; widget app in /Applications if Xcode present; "Open dashboard" works; app returns after login
+Actual:
+Result:          not run
+Known limits:
+```
+
+```
+Path:            B  Fresh install, Homebrew
+Revision:        <sha / formula version>   Install method: brew
+Machine / macOS:
+Steps run:       brew tap cagdasatici/tokencoach https://github.com/cagdasatici/TokenCoach && brew install tokencoach; tokencoach &
+Expected:        as A without the widget; login item added on first run
+Actual:
+Result:          not run
+Known limits:
+```
+
+```
+Path:            C  Upgrade with existing data
+Revision:        from <v1.1.0 sha> to <sha>   Install method: brew | git
+Machine / macOS:
+Steps run:       install v1.1.0; use it (prompts, apply one lesson, nudges on); record probes; upgrade (brew upgrade, or git auto-update); probes again
+Expected:        row counts ≥ before; user_version = 5; lesson still applied and in CLAUDE.md; nudges on; menu bar icon visible after auto-update; exactly one process (pgrep -fl tokencoach)
+Actual:
+Result:          not run
+Known limits:    ledger part pre-checked on 2026-09-29 (see above); restart on macOS 26 (5ba0865) not yet seen
+```
+
+```
+Path:            D  Rename migration (AIQuotaBar → TokenCoach)
+Revision:        <sha>            Install method: script
+Machine / macOS:
+Steps run:       install upstream AIQuotaBar, run until it has settings and history; run the one-line installer
+Expected:        old agents, watchdog, widget stopped; settings and history moved; no leftover old agents; no duplicate menu bar items; legacy.py handover checked if a fork install exists
+Actual:
+Result:          not run
+Known limits:
+```
+
+```
+Path:            E  Uninstall
+Revision:        <sha>            Install method: git | brew
+Machine / macOS:
+Steps run:       bash ~/.tokencoach/uninstall.sh; probes; reinstall; uninstall.sh --purge. Homebrew: tokencoach --cleanup && brew uninstall tokencoach
+Expected:        no TokenCoach LaunchAgents; hook gone from ~/.claude/settings.json, other settings intact; widget removed; yield repo hooks removed; data kept without --purge, deleted with it; applied lessons stay in the marked block
+Actual:
+Result:          not run
+Known limits:
+```
+
+```
+Path:            F  Demo isolation
+Revision:        <sha>            Install method: git | brew
+Machine / macOS:
+Steps run:       real data present; quit app; shasum instruction and settings files + ledger row counts; tokencoach --demo; click Apply, Remove, Edit, nudge toggle; shasum and counts again
+Expected:        identical checksums and counts; demo files only under the demo data dir
+Actual:
+Result:          not run
+Known limits:
+```
+
+```
+Path:            G  Widget build and refresh
+Revision:        <sha>            Install method: git
+Machine / macOS:
+Steps run:       bash widget/build_widget.sh; add the widget; usage change; pkill -f TokenCoachWidget.app
+Expected:        widget matches menu bar (remaining); updates within the refresh interval; host relaunched after pkill
+Actual:
+Result:          not run
+Known limits:    needs Xcode 15+, macOS 14+
+```
+
+```
+Path:            H  Unavailable and stale provider states
+Revision:        <sha>            Install method: git | brew
+Machine / macOS:
+Steps run:       no Claude/ChatGPT login, no Codex; then log in; log out or clear cookies; network off longer than a refresh cycle
+Expected:        menu bar, dashboard and widget show unavailable or sign-in, never a real-looking 0% or 100%; stale data marked stale; no crash in ~/Library/Logs/TokenCoach/
+Actual:
+Result:          not run
+Known limits:
+```
+
+Add a regression test in `tests/test_release.py` for any failure found.
