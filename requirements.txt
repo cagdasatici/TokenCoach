@@ -1,6 +1,16 @@
-rumps>=0.4.0,<1.0
-curl_cffi>=0.7.0,<1.0
-browser-cookie3>=0.19.1,<1.0
+# Exact versions, including dependencies of dependencies: install.sh and
+# auto-update install these and nothing newer. Bump them deliberately, run
+# the tests, and commit the new list.
+rumps==0.4.0
+curl_cffi==0.16.3
+browser-cookie3==0.20.1
 # Required by the floating usage panel (Quartz.CGColor*). rumps only pulls
 # pyobjc-framework-Cocoa, so Quartz must be declared explicitly.
-pyobjc-framework-Quartz>=10.0
+pyobjc-framework-Quartz==12.2.2
+pyobjc-framework-Cocoa==12.2.2
+pyobjc-core==12.2.2
+certifi==2026.7.22
+cffi==2.1.1
+pycparser==3.0
+lz4==4.4.5
+pycryptodomex==3.23.0

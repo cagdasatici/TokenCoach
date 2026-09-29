@@ -148,6 +148,26 @@ class Packaging(unittest.TestCase):
             r = subprocess.run(["bash", "-n", str(REPO / script)], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, f"{script}: {r.stderr}")
 
+    def test_requirements_are_exact(self):
+        # auto-update installs these; a range would pull in whatever was published last
+        lines = [l.strip() for l in (REPO / "requirements.txt").read_text().splitlines()]
+        loose = [l for l in lines if l and not l.startswith("#") and "==" not in l]
+        self.assertEqual(loose, [])
+
+
+class PrivateFiles(unittest.TestCase):
+    def test_config_is_saved_owner_only(self):
+        import stat
+        from tokencoach import config
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "config.json")
+            pathlib.Path(path + ".tmp").write_text("stale")
+            os.chmod(path + ".tmp", 0o644)
+            with patch.object(config, "CONFIG_FILE", path):
+                config.save_config({"dashboard_token": "t"})
+                self.assertEqual(config.load_config(), {"dashboard_token": "t"})
+            self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+
 
 if __name__ == "__main__":
     unittest.main()

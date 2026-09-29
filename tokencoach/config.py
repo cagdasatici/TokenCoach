@@ -91,6 +91,13 @@ def migrate_legacy_data() -> list[str]:
 _MIGRATED = migrate_legacy_data()
 os.makedirs(APP_SUPPORT, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
+# Owner-only: the folder holds the dashboard token, session cookies and every
+# prompt in the ledger. Files written before this existed are tightened too.
+for _path, _mode in ((APP_SUPPORT, 0o700), (CONFIG_FILE, 0o600)):
+    try:
+        os.chmod(_path, _mode)
+    except OSError:
+        pass
 
 # ── logging ──────────────────────────────────────────────────────────────────
 
@@ -170,7 +177,9 @@ def load_config() -> dict:
 
 def save_config(cfg: dict):
     tmp = CONFIG_FILE + ".tmp"
-    with open(tmp, "w") as f:
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)          # a stale .tmp keeps its old mode otherwise
+    with os.fdopen(fd, "w") as f:
         json.dump(cfg, f, indent=2)
     os.replace(tmp, CONFIG_FILE)
 

@@ -206,6 +206,7 @@ CREATE TABLE IF NOT EXISTS calls (
     cache_write_tokens INTEGER NOT NULL,
     cache_read_tokens  INTEGER NOT NULL,
     reasoning_tokens   INTEGER NOT NULL DEFAULT 0,
+    cache_write_1h_tokens INTEGER,        -- Claude: the part of cache_write_tokens with the 1-hour TTL; NULL = unknown
     cost_usd           REAL,
     quota_5h_pct       REAL,
     quota_week_pct     REAL,
@@ -274,7 +275,7 @@ SOURCE_PROVIDER = {
 
 
 # Bump whenever SCHEMA or _migrate changes, so existing ledgers pick it up.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 4
 
 
 def open_ledger(path: str = LEDGER_DB, timeout: float = 30) -> sqlite3.Connection:
@@ -300,6 +301,9 @@ def _migrate(conn):
     lesson_cols = {r[1] for r in conn.execute("PRAGMA table_info(lessons)")}
     if "edited" not in lesson_cols:
         conn.execute("ALTER TABLE lessons ADD COLUMN edited INTEGER NOT NULL DEFAULT 0")
+    call_cols = {r[1] for r in conn.execute("PRAGMA table_info(calls)")}
+    if "cache_write_1h_tokens" not in call_cols:
+        conn.execute("ALTER TABLE calls ADD COLUMN cache_write_1h_tokens INTEGER")
     # the optimizer's own runs were recorded under the pre-rename project name
     for table in ("calls", "prompts"):
         conn.execute(f"UPDATE {table} SET project = ? WHERE project = 'aiquotaleft-optimizer'",
@@ -308,6 +312,23 @@ def _migrate(conn):
         # Re-read every log once so existing prompts get their folder path.
         conn.execute("UPDATE files SET offset = 0, state = '{}'")
         _meta_set(conn, "cwd_backfilled", "1")
+    if _meta_get(conn, "cache_1h_backfilled") is None:
+        # Re-read every log once so existing Claude calls get their cache
+        # split, which reprice() needs to apply price overrides to them.
+        conn.execute("UPDATE files SET offset = 0, state = '{}'")
+        _meta_set(conn, "cache_1h_backfilled", "1")
+    _restrict_files(conn)
+
+
+def _restrict_files(conn):
+    """Owner-only access: the ledger holds every prompt the person typed.
+    SQLite gives the WAL and shared-memory files the database's mode."""
+    path = conn.execute("PRAGMA database_list").fetchone()["file"]
+    for p in (path, path + "-wal", path + "-shm"):
+        try:
+            os.chmod(p, 0o600)
+        except OSError:
+            pass
 
 
 def _meta_get(conn, key, default=None):
@@ -422,7 +443,7 @@ def _claude_usage_call(d: dict, source: str, session: str, project: str,
         "project": project, "model": model, "ts": ts,
         "input_tokens": inp, "output_tokens": out,
         "cache_write_tokens": write, "cache_read_tokens": read,
-        "reasoning_tokens": reasoning,
+        "reasoning_tokens": reasoning, "cache_write_1h_tokens": w1h,
         "cost_usd": call_cost(model, inp, out, w5m, w1h, read, overrides),
     }
 
@@ -578,7 +599,10 @@ SOURCES = [
 
 _CALL_COLS = ("id", "source", "session_id", "project", "model", "ts",
               "input_tokens", "output_tokens", "cache_write_tokens",
-              "cache_read_tokens", "reasoning_tokens", "cost_usd", "estimated")
+              "cache_read_tokens", "reasoning_tokens", "cache_write_1h_tokens",
+              "cost_usd", "estimated")
+_UPSERT_COLS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens",
+                "reasoning_tokens", "cache_write_1h_tokens", "cost_usd")
 
 
 def _insert(conn, prompts, calls, samples):
@@ -591,13 +615,17 @@ def _insert(conn, prompts, calls, samples):
     )
     conn.executemany(
         # A response can be logged more than once (one line per content
-        # block); keep the copy with the most output tokens.
+        # block); keep the copy with the most output tokens, whole, so the
+        # token columns and the cost describe the same line. A re-read also
+        # fills in a cache split that older rows lack.
         f"INSERT INTO calls ({', '.join(_CALL_COLS)}) "
         f"VALUES ({', '.join(':' + c for c in _CALL_COLS)}) "
-        f"ON CONFLICT(id) DO UPDATE SET output_tokens=excluded.output_tokens, "
-        f"reasoning_tokens=excluded.reasoning_tokens, cost_usd=excluded.cost_usd "
-        f"WHERE excluded.output_tokens > calls.output_tokens",
-        [{"estimated": 0, **c} for c in calls],
+        f"ON CONFLICT(id) DO UPDATE SET "
+        f"{', '.join(f'{c}=excluded.{c}' for c in _UPSERT_COLS)} "
+        f"WHERE excluded.output_tokens > calls.output_tokens "
+        f"OR (calls.cache_write_1h_tokens IS NULL AND excluded.cache_write_1h_tokens IS NOT NULL "
+        f"AND excluded.output_tokens = calls.output_tokens)",
+        [{"estimated": 0, "cache_write_1h_tokens": None, **c} for c in calls],
     )
     conn.executemany(
         "INSERT OR IGNORE INTO quota_samples (provider, window, ts, pct) "
@@ -888,18 +916,22 @@ def ledger_overrides(config: dict) -> dict:
 
 
 def reprice(conn, overrides: dict | None = None) -> int:
-    """Recompute costs of non-Claude calls when the pricing rules change, and
-    price any unpriced ones. Claude calls keep their exact ingest-time cost
-    (which knew the 5-minute / 1-hour cache split)."""
+    """Recompute costs when the pricing rules or the person's overrides
+    change, and price any unpriced ones. A Claude call is repriced only when
+    its 5-minute / 1-hour cache split is known; the rest keep their
+    ingest-time cost (only estimates are left out entirely)."""
     version = hashlib.sha1(json.dumps([MODEL_EQUIVALENTS, LIST_PRICES, overrides or {}],
                                       sort_keys=True).encode()).hexdigest()[:12]
-    where = "estimated = 0 AND model NOT LIKE 'claude-%'"
+    where = ("estimated = 0 AND (model NOT LIKE 'claude-%' "
+             "OR cache_write_1h_tokens IS NOT NULL)")
     if _meta_get(conn, "pricing_version") == version:
         where += " AND cost_usd IS NULL"
     rows = conn.execute(f"SELECT id, model, input_tokens, output_tokens, cache_write_tokens, "
-                        f"cache_read_tokens FROM calls WHERE {where}").fetchall()
+                        f"COALESCE(cache_write_1h_tokens, 0) w1h, cache_read_tokens "
+                        f"FROM calls WHERE {where}").fetchall()
     conn.executemany("UPDATE calls SET cost_usd = ? WHERE id = ?", [
-        (call_cost(r["model"], r["input_tokens"], r["output_tokens"], r["cache_write_tokens"], 0,
+        (call_cost(r["model"], r["input_tokens"], r["output_tokens"],
+                   r["cache_write_tokens"] - r["w1h"], r["w1h"],
                    r["cache_read_tokens"], overrides), r["id"]) for r in rows])
     _meta_set(conn, "pricing_version", version)
     return len(rows)

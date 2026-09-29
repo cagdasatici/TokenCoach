@@ -265,7 +265,7 @@ if (QS.get('theme')) document.documentElement.dataset.theme = QS.get('theme');
 const C = D.coach || {lessons: [], improvements: {}, templates: [], nudges: {by_kind: {}}};
 const SRC = D.sources, SRC_BY = Object.fromEntries(SRC.map(s => [s.key, s]));
 const $ = s => document.querySelector(s);
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const usd = v => v == null ? '—' : v >= 100 ? '$' + Math.round(v).toLocaleString() : v >= 1 ? '$' + v.toFixed(2) : '$' + v.toFixed(3);
 const tok = n => { n = n || 0; return n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? Math.round(n/1e3)+'k' : String(Math.round(n)); };
 const pct = v => v == null ? '—' : (v >= 10 ? Math.round(v) : v.toFixed(1)) + '%';

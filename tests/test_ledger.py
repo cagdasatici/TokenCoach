@@ -161,6 +161,44 @@ class Repricing(LedgerTestCase):
         self.assertAlmostEqual(cost("openai:r1"), 0.2)          # user price wins
         self.assertEqual(cost("anthropic:m1"), claude_before)
 
+    def cost(self, i):
+        return self.conn.execute("SELECT cost_usd FROM calls WHERE id = ?", (i,)).fetchone()[0]
+
+    def test_claude_price_override_reprices_past_calls_with_their_cache_split(self):
+        _jl(self.root / "claude/p/s1.jsonl", [_cc_user("u1", "hi", "2026-09-27T10:00:00Z"),
+                                            _cc_asst("m1", "2026-09-27T10:00:01Z")])
+        self.ingest()
+        ledger.reprice(self.conn, ledger.ledger_overrides(
+            {"ledger_prices": {"claude-sonnet-5": {"in": 1.0, "out": 1.0}}}))
+        # 10 in, 100 out, 200 written with the 1-hour TTL (2x input), 1000 read (0.1x)
+        self.assertAlmostEqual(self.cost("anthropic:m1"), (10 + 100 + 200 * 2 + 1000 * 0.1) / 1e6)
+
+    def test_claude_calls_without_a_known_split_keep_their_cost(self):
+        _jl(self.root / "claude/p/s1.jsonl", [_cc_user("u1", "hi", "2026-09-27T10:00:00Z"),
+                                            _cc_asst("m1", "2026-09-27T10:00:01Z")])
+        self.ingest()
+        self.conn.execute("UPDATE calls SET cache_write_1h_tokens = NULL")
+        before = self.cost("anthropic:m1")
+        ledger.reprice(self.conn, ledger.ledger_overrides(
+            {"ledger_prices": {"claude-sonnet-5": {"in": 1.0, "out": 1.0}}}))
+        self.assertEqual(self.cost("anthropic:m1"), before)
+
+    def test_upgrade_rereads_logs_to_fill_in_the_cache_split(self):
+        _jl(self.root / "claude/p/s1.jsonl", [_cc_user("u1", "hi", "2026-09-27T10:00:00Z"),
+                                            _cc_asst("m1", "2026-09-27T10:00:01Z", out=5),
+                                            _cc_asst("m1", "2026-09-27T10:00:01Z", out=300)])
+        self.ingest()
+        # a ledger from before the column: split unknown, marker absent
+        self.conn.execute("UPDATE calls SET cache_write_1h_tokens = NULL")
+        self.conn.execute("DELETE FROM meta WHERE key = 'cache_1h_backfilled'")
+        self.conn.execute("PRAGMA user_version = 0")
+        self.conn.commit()
+        self.conn.close()
+        self.conn = ledger.open_ledger(str(self.root / "ledger.db"))
+        self.ingest()
+        [call] = self.calls()
+        self.assertEqual((call["output_tokens"], call["cache_write_1h_tokens"]), (300, 200))
+
 
 class ClaudeCodeIngest(LedgerTestCase):
     def test_prompts_calls_and_linking(self):
@@ -195,6 +233,25 @@ class ClaudeCodeIngest(LedgerTestCase):
         calls = self.calls()
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0]["output_tokens"], 300)
+
+    def test_duplicate_lines_keep_one_line_whole(self):
+        # tokens and cost must describe the same line, not a mix of two
+        _jl(self.root / "claude/p/s1.jsonl", [
+            _cc_user("u1", "hi", "2026-09-27T10:00:00Z"),
+            _cc_asst("m1", "2026-09-27T10:00:01Z", out=5, input_tokens=1),
+            _cc_asst("m1", "2026-09-27T10:00:01Z", out=300, input_tokens=40),
+        ])
+        self.ingest()
+        [call] = self.calls()
+        self.assertEqual((call["input_tokens"], call["output_tokens"]), (40, 300))
+        self.assertAlmostEqual(call["cost_usd"],
+                               ledger.call_cost("claude-sonnet-5", 40, 300, 0, 200, 1000))
+
+    def test_ledger_files_are_private(self):
+        path = self.root / "ledger.db"
+        for p in (path, pathlib.Path(str(path) + "-wal")):
+            if p.exists():
+                self.assertEqual(stat.S_IMODE(p.stat().st_mode), 0o600, p)
 
     def test_subagent_transcript_links_to_parent_prompt(self):
         _jl(self.root / "claude/p/s1.jsonl", [_cc_user("u1", "research X", "2026-09-27T10:00:00Z")])
@@ -398,6 +455,11 @@ class ReportAndOptimizer(LedgerTestCase):
             _cc_asst("m1", now, out=500),
         ])
         self.ingest()
+
+    def test_dashboard_escape_covers_single_quotes(self):
+        from tokencoach.ledger_report import DASHBOARD_JS
+        esc = next(l for l in DASHBOARD_JS.splitlines() if l.startswith("const esc ="))
+        self.assertIn("&#39;", esc)
 
     def test_dashboard_renders_and_embeds_data_safely(self):
         from tokencoach.ledger_report import build_report, dashboard_data
