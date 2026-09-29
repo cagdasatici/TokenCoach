@@ -258,6 +258,36 @@ class ApplyToFiles(Base):
         self.assertIsNone(im["before"]["quota_per_prompt"])
         self.assertIsNone(im["after"]["quota_per_prompt"])
         self.assertNotIn("quota_per_prompt", im["changes"])
+        # Both periods carry their dates and sizes, and six prompts is a small sample.
+        self.assertEqual((im["before"]["from"], im["before"]["to"]), (applied - 28 * 86400, applied))
+        self.assertEqual(im["after"]["from"], applied)
+        self.assertAlmostEqual(im["after"]["to"], time.time(), delta=60)
+        self.assertEqual((im["before"]["sessions"], im["after"]["sessions"]), (6, 6))
+        self.assertTrue(im["small_sample"])
+
+
+class EvidenceWording(Base):
+    """Lessons name their evidence; they never claim a probability or a cause."""
+
+    def test_evidence_level_follows_session_count(self):
+        levels = {n: coach.evidence_level(n) for n in (0, 1, 2, 3, 7, 8, 30)}
+        self.assertEqual(levels, {0: "none", 1: "limited", 2: "limited", 3: "moderate",
+                                  7: "moderate", 8: "strong", 30: "strong"})
+
+    def test_snapshot_carries_evidence_level(self):
+        coach._upsert(self.conn, {"id": "l1", "origin": "detector", "scope": "global", "tools": "claude",
+                                  "title": "t", "rule": "r", "evidence": "e", "evidence_n": 5,
+                                  "confidence": 0.8})
+        item = coach.coach_snapshot(self.conn)["lessons"][0]
+        self.assertEqual((item["evidence_level"], item["evidence_n"]), ("moderate", 5))
+
+    def test_dashboard_copy_makes_no_confidence_or_causal_claims(self):
+        from tokencoach.ledger_report import build_report
+        page = build_report(self.conn, {})
+        self.assertNotIn("confident", page)
+        self.assertNotIn(">Working<", page)
+        self.assertIn("not a controlled test", page)
+        self.assertIn("small sample", page)
 
 
 class MissingQuota(Base):

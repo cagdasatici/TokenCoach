@@ -56,6 +56,12 @@ def evidence_factor(n: int) -> float:
     return {7: 0.94, 6: 0.93, 5: 0.88, 4: 0.85, 3: 0.75, 2: 0.6, 1: 0.4}.get(n, 0.0)
 
 
+def evidence_level(n: int) -> str:
+    """What the dashboard shows instead of a confidence: a name for how many
+    separate sessions show the pattern. A rule of thumb, not a measured accuracy."""
+    return "strong" if n >= 8 else "moderate" if n >= 3 else "limited" if n >= 1 else "none"
+
+
 def status_of(lesson: dict) -> str:
     if lesson["status"] != "open":
         return lesson["status"]
@@ -423,6 +429,7 @@ def apply_ready(conn) -> list[str]:
 # ── before / after ─────────────────────────────────────────────────────────
 
 MIN_AFTER_PROMPTS = 5
+SMALL_SAMPLE_PROMPTS = 30   # below this on either side, the dashboard says "small sample"
 
 
 def _window_stats(conn, lo: float, hi: float, project: str | None, sources: tuple[str, ...]) -> dict:
@@ -446,7 +453,9 @@ def _window_stats(conn, lo: float, hi: float, project: str | None, sources: tupl
     # A prompt with no attributed quota is unknown, not zero: average the known ones.
     quota = [r["q"] for r in per_prompt if r["q"] is not None]
     return {
+        "from": lo, "to": hi,
         "prompts": n,
+        "sessions": len(sessions),
         "cost_per_prompt": sum(priced) / len(priced) if priced else None,
         "responses_per_prompt": sum(r["calls"] for r in per_prompt) / n if n else None,
         "quota_per_prompt": sum(quota) / len(quota) if quota else None,
@@ -465,7 +474,8 @@ def impact(conn, lesson: dict, before_days: int = 28) -> dict:
     before = _window_stats(conn, t - before_days * 86400, t, project, sources)
     after = _window_stats(conn, t, time.time() + 1, project, sources)
     out = {"before": before, "after": after, "ready": after["prompts"] >= MIN_AFTER_PROMPTS
-           and before["prompts"] >= MIN_AFTER_PROMPTS, "needed": MIN_AFTER_PROMPTS}
+           and before["prompts"] >= MIN_AFTER_PROMPTS, "needed": MIN_AFTER_PROMPTS,
+           "small_sample": min(before["prompts"], after["prompts"]) < SMALL_SAMPLE_PROMPTS}
     changes = {}
     for k in ("cost_per_prompt", "responses_per_prompt", "peak_context", "session_length", "quota_per_prompt"):
         b, a = before.get(k), after.get(k)
@@ -566,6 +576,7 @@ def coach_snapshot(conn) -> dict:
         item = {k: l[k] for k in ("id", "title", "rule", "scope", "tools", "evidence", "evidence_n",
                                   "confidence", "saving", "origin", "edited")}
         item["status"] = st
+        item["evidence_level"] = evidence_level(l["evidence_n"])
         item["needed"] = 8 if st == "collecting" else None
         if st == "applied":
             item["files"] = json.loads(l["applied_files"] or "[]")

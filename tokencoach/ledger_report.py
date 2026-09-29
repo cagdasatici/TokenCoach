@@ -476,7 +476,12 @@ function tiles(rows, prev) {
 }
 
 // ── coach ─────────────────────────────────────────────────────────────────
-const pctConf = c => Math.round(c * 100) + '%';
+// Evidence is named from the number of separate sessions that show the pattern (coach.evidence_level):
+// a rule of thumb, not a measured accuracy, so no percentage is shown.
+const EVIDENCE_HELP = 'Based on how many separate sessions show the pattern: 1-2 limited, 3-7 moderate, 8 or more strong. A rule of thumb, not a measured accuracy.';
+const evidenceLabel = l => `${{none: 'No', limited: 'Limited', moderate: 'Moderate', strong: 'Strong'}[l.evidence_level] || 'No'} evidence · ${l.evidence_n} session${l.evidence_n === 1 ? '' : 's'}`;
+const dayLabel = t => new Date(t * 1000).toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+const period = s => `${dayLabel(s.from)} – ${dayLabel(s.to)}, ${s.prompts} prompt${s.prompts === 1 ? '' : 's'} in ${s.sessions} session${s.sessions === 1 ? '' : 's'}`;
 const scopeLabel = l => (l.scope === 'global' ? 'all projects' : l.scope) + ' · ' + ({claude:'Claude', codex:'Codex', both:'Claude + Codex'}[l.tools]);
 const fileList = files => files && files.length ? files.map(f => f.startsWith(D.home + '/') ? '~' + f.slice(D.home.length) : f).join(', ') : 'no project folder found';
 const ago = t => { const d = Math.round((D.generated - t) / DAY); return d < 1 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`; };
@@ -485,14 +490,19 @@ function impactBlock(l) {
   if (!im.ready) return `<div class="why">Measuring: ${im.after.prompts} of ${im.needed} prompts since it was applied.</div>`;
   const lab = {cost_per_prompt:'cost per prompt', responses_per_prompt:'responses per prompt', peak_context:'peak context', session_length:'session length'};
   const cells = Object.entries(im.changes).filter(([k]) => lab[k]).slice(0, 4).map(([k, v]) =>
-    `<div><b class="${v <= 0 ? 'better' : 'worse'}">${v <= 0 ? '−' : '+'}${Math.abs(Math.round(v * 100))}%</b><span>${lab[k]}</span></div>`);
-  return (cells.length ? `<div class="gain num">${cells.join('')}</div>` : '<div class="why">No change yet.</div>') + quotaLine(im);
+    `<div><b class="${Math.round(v * 100) < 0 ? 'better' : Math.round(v * 100) > 0 ? 'worse' : ''}">${changeLabel(v)}</b><span>${lab[k]}</span></div>`);
+  const caveat = `<div class="why">Observed change since it was applied, not a controlled test: other things changed too.${im.small_sample ? ' This is a <b>small sample</b>, so treat it as a hint.' : ''}</div>`;
+  return caveat + (cells.length ? `<div class="gain num">${cells.join('')}</div>` : '<div class="why">No change yet.</div>') + quotaLine(im) +
+    `<div class="why num">Before: ${period(im.before)}. After: ${period(im.after)}.</div>`;
+}
+function changeLabel(v) {
+  const r = Math.round(v * 100);
+  return r === 0 ? 'no change' : `${r < 0 ? '−' : '+'}${Math.abs(r)}%`;
 }
 // Prompts without quota data are left out of the average, so show how many were measured.
 function quotaLine(im) {
   const side = s => s.prompts ? `${s.quota_per_prompt == null ? 'unavailable' : pct(s.quota_per_prompt)} (${s.quota_known} of ${s.prompts} prompts measured)` : 'unavailable (no prompts)';
-  const ch = im.changes.quota_per_prompt, r = ch == null ? null : Math.round(ch * 100);
-  const delta = r == null ? '' : r === 0 ? ', no change' : `, ${r < 0 ? '−' : '+'}${Math.abs(r)}%`;
+  const ch = im.changes.quota_per_prompt, delta = ch == null ? '' : `, ${changeLabel(ch)}`;
   return `<div class="why num">5-hour quota per prompt: ${side(im.before)} before, ${side(im.after)} after${delta}.</div>`;
 }
 function lessonRow(l) {
@@ -502,11 +512,11 @@ function lessonRow(l) {
   else if (l.status === 'review' || (l.status === 'collecting' && l.edited)) acts = `<button class="btn quiet" data-act="dismiss" data-id="${l.id}">Not now</button><button class="btn" data-act="apply-confirm" data-id="${l.id}">Try it</button>`;
   if (l.status === 'applied') {
     const im = l.impact;
-    why = `Applied ${ago(l.applied_ts)}.` + (im && im.ready ? ` Compared across ${im.before.prompts} prompts before and ${im.after.prompts} after.` : '');
+    why = `Applied ${ago(l.applied_ts)}.`;
   } else if (l.status === 'collecting') why = `Watching: needs about ${l.needed} sessions of evidence (${l.evidence_n} so far).`;
-  else why = [l.saving, l.evidence].filter(Boolean).map(esc).join('. ');
+  else why = [l.evidence, l.saving && `Analyze's own estimate: ${l.saving}`].filter(Boolean).map(esc).join(' ');
   const files = l.status === 'applied' ? `Written to ${esc(fileList(l.files))}` : `Adds one rule to ${esc(fileList(l.files))}`;
-  const conf = l.status === 'applied' ? '' : `<span>${pctConf(l.confidence)} confident</span>`;
+  const conf = `<span title="${EVIDENCE_HELP}">${evidenceLabel(l)}</span>`;
   return `<div class="lesson" id="lesson-${l.id}"><div class="licon ${kind}" aria-hidden="true">${{working:'✓', ready:'✦', maybe:'?'}[kind]}</div>
     <div class="body"><div class="t">${esc(l.title)}${l.edited ? ' <span class="tag">edited by you</span>' : ''}</div><div class="why">${why}</div>
     ${l.status === 'applied' ? impactBlock(l) : ''}
@@ -526,7 +536,7 @@ function coach() {
   const follow = C.nudges.context_total ? ` You started fresh after ${C.nudges.context_followed} of ${C.nudges.context_total} long-context nudges.` : '';
   const nudge = `<div class="nudge"><div class="txt">${D.nudges_on ? `<b>Nudges in Claude Code</b> · ${total} in the last 30 days.${follow}` : '<b>Nudges are off.</b> TokenCoach can warn you in Claude Code before an expensive prompt.'}</div>
     <button class="toggle ${D.nudges_on ? 'on' : ''}" role="switch" aria-checked="${D.nudges_on ? 'true' : 'false'}" aria-label="Nudges in Claude Code" data-act="nudges" data-on="${D.nudges_on ? 0 : 1}"></button></div>`;
-  h += `<div class="group-label">Working</div><div class="list">${applied.length ? applied.map(lessonRow).join('') : '<div class="lesson"><div class="why">Lessons you apply show here, with before and after numbers.</div></div>'}${nudge}</div>`;
+  h += `<div class="group-label">Applied</div><div class="list">${applied.length ? applied.map(lessonRow).join('') : '<div class="lesson"><div class="why">Lessons you apply show here, with before and after numbers.</div></div>'}${nudge}</div>`;
   if (collecting.length) h += `<details class="adv"><summary class="group-label">Watching ${collecting.length} more pattern${collecting.length > 1 ? 's' : ''} (collecting evidence)</summary><div class="list">${collecting.map(lessonRow).join('')}</div></details>`;
   $('#coach').innerHTML = h;
   $('#analyze-meta').textContent = D.last_analysis ? `last run ${D.last_analysis}` : '';

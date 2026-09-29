@@ -27,9 +27,9 @@ one big question. It's habits that stay invisible:
   repository before it writes a line.
 - **The wrong model.** A quick question to the most expensive model, because it was selected.
 
-TokenCoach turns those habits into numbers, then helps you change them, and shows whether it worked.
+TokenCoach turns those habits into numbers, then helps you change them, and shows what changed afterwards.
 
-## How it works: measure → nudge → coach → prove
+## How it works: measure → nudge → coach → compare
 
 ### 1. Measure: every prompt, every token, every project
 
@@ -61,14 +61,16 @@ nearly empty quota. It never blocks or rewrites what you typed.
 
 ### 3. Coach: lessons written into the files your agents read
 
-<img alt="Coach: lessons with confidence, apply, edit, before/after" src="docs/images/coach-dark.png">
+<img alt="Coach: lessons with their evidence, apply, edit, before/after" src="docs/images/coach-dark.png">
 
 Patterns that repeat across sessions become **lessons**, plain instructions for your coding
 agent such as *"when a request is broad, list the concrete items and wait for confirmation"*.
 
-- **Evidence decides.** Confidence is capped by how many separate sessions show the pattern.
-  At **95%+** one click writes the lesson into `CLAUDE.md` / `AGENTS.md`. Between 70% and 95%
-  you review it and decide. Below that it keeps collecting.
+- **Evidence decides.** Each lesson names its evidence by how many separate sessions show the
+  pattern: **limited** (1–2), **moderate** (3–7) or **strong** (8+). That is a rule of thumb,
+  not a measured accuracy. A clear pattern with strong evidence can be written into `CLAUDE.md` /
+  `AGENTS.md` in one click; with moderate evidence you review it and decide; with less it keeps
+  collecting.
 - **Your words win.** **Edit** any lesson ("warn after 10 responses, not 30"). Edited lessons
   are yours, and later analyses never overwrite them.
 - **Safe edits.** Lessons live in one clearly marked block, the original file is backed up
@@ -76,10 +78,13 @@ agent such as *"when a request is broad, list the concrete items and wait for co
 - **Improve any prompt.** Get a tighter rewrite of a costly prompt to copy or save as a template.
 - **Analyze deeper.** Claude reviews your 20 costliest prompts and proposes new lessons.
 
-### 4. Prove: before and after
+### 4. Compare: before and after
 
-Every applied lesson shows what changed afterwards: $ per prompt, agent responses per
-prompt, session length, peak context and quota per prompt. So you know which habits paid off.
+Every applied lesson shows what changed after it was applied, against the four weeks before:
+$ per prompt, agent responses per prompt, session length, peak context and quota per prompt
+(with how many prompts had quota data). Both periods show their dates and size, and small
+samples are marked. It is an observed change, not a controlled test: other things change too,
+so read it as a hint about which habits pay off.
 
 <details>
 <summary><b>Advanced view</b>: quota over time, when you work, breakdowns, sessions</summary>
