@@ -29,6 +29,7 @@ A navigation snapshot, not a replacement for requirements or live evidence. Upda
 
 - Codex has no prompt hook, so Codex gets coaching through AGENTS.md lessons only.
 
+- Release acceptance (TC3, planned on a fresh Mac mini), the optional coaching experiment (TC4) and follow-ups from TC1/TC2 (quota attribution for flat intervals, stale screenshots): `docs/plans/2026-09-29-remaining-release-work.md`. TC1 (missing quota is unknown) and TC2 (evidence levels, observed before/after) are done.
 ## Notes
 
 - 2026-09-28: `brew install` confirmed working end to end on the owner's Mac (1.0.1 from the tap).
