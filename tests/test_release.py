@@ -236,6 +236,53 @@ class AutoUpdate(unittest.TestCase):
         self.assertFalse(_check_and_apply_update(str(self.clone)))
 
 
+class AutoUpdateRestart(unittest.TestCase):
+    def test_supervised_restart_uses_fresh_launchd_process(self):
+        from tokencoach import update
+        listed = subprocess.CompletedProcess([], 0, '"PID" = 1234;\n', '')
+        restarted = subprocess.CompletedProcess([], 0, b'', b'')
+        with patch.object(update.os, "getpid", return_value=1234), \
+                patch.object(update.os, "getuid", return_value=501), \
+                patch.object(update.subprocess, "run", side_effect=[listed, restarted]) as run, \
+                patch.object(update.os, "_exit") as exit_process, \
+                patch.object(update.os, "execv") as execv:
+            update._restart_app()
+        self.assertEqual(run.call_args_list[1].args[0],
+                         ["launchctl", "kickstart", "-k",
+                          f"gui/501/{update.LAUNCH_AGENT_LABEL}"])
+        exit_process.assert_called_once_with(0)
+        execv.assert_not_called()
+
+    def test_failed_kickstart_exits_for_launchd_to_respawn(self):
+        from tokencoach import update
+        listed = subprocess.CompletedProcess([], 0, '"PID" = 1234;\n', '')
+        failed = subprocess.CompletedProcess([], 5, b'', b'no such service')
+        with patch.object(update.os, "getpid", return_value=1234), \
+                patch.object(update.subprocess, "run", side_effect=[listed, failed]), \
+                patch.object(update.subprocess, "Popen") as popen, \
+                patch.object(update.os, "_exit") as exit_process, \
+                patch.object(update.os, "execv") as execv:
+            update._restart_app()
+        exit_process.assert_called_once_with(1)
+        popen.assert_not_called()
+        execv.assert_not_called()
+
+    def test_manual_launch_starts_a_fresh_process(self):
+        # os.execv keeps the pid, and on macOS 26 the re-exec'd status item
+        # stays hidden; a new process gets a visible one.
+        from tokencoach import update
+        listed = subprocess.CompletedProcess([], 1, '', '')
+        with patch.object(update.subprocess, "run", return_value=listed) as run, \
+                patch.object(update.subprocess, "Popen") as popen, \
+                patch.object(update.os, "_exit") as exit_process, \
+                patch.object(update.os, "execv") as execv:
+            update._restart_app()
+        run.assert_called_once()
+        self.assertEqual(popen.call_args.args[0][0], update.sys.executable)
+        exit_process.assert_called_once_with(0)
+        execv.assert_not_called()
+
+
 class Cleanup(unittest.TestCase):
     def test_removes_hook_and_login_item_only(self):
         from tokencoach import __main__ as cli, config, nudge

@@ -788,8 +788,8 @@ def _add_login_item():
         # respawns only after a crash - so any clean exit left the app dead
         # until the next login, with nothing reporting that it had gone.
         # Quit still works: _quit_app() unloads this job first, so launchd has
-        # nothing to respawn. _restart_app() uses os.execv, which replaces the
-        # process in place without exiting, so it never trips a respawn either.
+        # nothing to respawn. _restart_app() restarts through launchctl
+        # kickstart, so launchd never runs two copies.
         "KeepAlive": True,
         "StandardOutPath": LOG_FILE,
         "StandardErrorPath": LOG_FILE,

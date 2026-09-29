@@ -1,10 +1,11 @@
 """Silent auto-update via git pull."""
 
 import os
+import re
 import subprocess
 import sys
 
-from tokencoach.config import log
+from tokencoach.config import LAUNCH_AGENT_LABEL, log
 
 
 def _check_and_apply_update(install_dir: str | None = None) -> bool:
@@ -47,6 +48,41 @@ def _check_and_apply_update(install_dir: str | None = None) -> bool:
 
 
 def _restart_app():
-    """Restart the app in-place by re-exec'ing the current process."""
-    log.info("restarting after auto-update")
-    os.execv(sys.executable, [sys.executable] + sys.argv)
+    """Restart in a fresh process after an update.
+
+    Never os.execv: it keeps the pid, and on macOS 26 the re-exec'd process's
+    status item stays hidden, so the menu bar icon vanishes.
+    """
+    supervised = False
+    try:
+        job = subprocess.run(
+            ["launchctl", "list", LAUNCH_AGENT_LABEL],
+            capture_output=True, text=True, timeout=5,
+        )
+        match = re.search(r'"PID"\s*=\s*(\d+);', job.stdout) if job.returncode == 0 else None
+        supervised = bool(match) and int(match.group(1)) == os.getpid()
+        if supervised:
+            log.info("restarting after auto-update via launchd")
+            result = subprocess.run(
+                ["launchctl", "kickstart", "-k",
+                 f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"],
+                capture_output=True, timeout=15,
+            )
+            if result.returncode == 0:
+                # kickstart starts a new process; do not leave this AppKit
+                # process running if launchctl returns before killing it.
+                os._exit(0)
+                return
+            log.warning("launchd restart failed: %s", result.stderr.decode(errors="replace"))
+    except (OSError, subprocess.TimeoutExpired):
+        log.debug("launchd restart unavailable", exc_info=True)
+    if supervised:
+        # Exit non-zero so launchd respawns us, including under older
+        # plists that only restart after an unsuccessful exit.
+        os._exit(1)
+        return
+    # Manual launches have no supervising job: start a new copy, then leave.
+    log.info("restarting after auto-update in a new process")
+    subprocess.Popen([sys.executable] + sys.argv, stdin=subprocess.DEVNULL,
+                     start_new_session=True)
+    os._exit(0)
