@@ -443,11 +443,14 @@ def _window_stats(conn, lo: float, hi: float, project: str | None, sources: tupl
             {proj} GROUP BY c.session_id""", params).fetchall()
     n = len(per_prompt)
     priced = [r["cost"] for r in per_prompt if r["cost"] is not None]
+    # A prompt with no attributed quota is unknown, not zero: average the known ones.
+    quota = [r["q"] for r in per_prompt if r["q"] is not None]
     return {
         "prompts": n,
         "cost_per_prompt": sum(priced) / len(priced) if priced else None,
         "responses_per_prompt": sum(r["calls"] for r in per_prompt) / n if n else None,
-        "quota_per_prompt": sum(r["q"] or 0 for r in per_prompt) / n if n else None,
+        "quota_per_prompt": sum(quota) / len(quota) if quota else None,
+        "quota_known": len(quota),
         "peak_context": sum(s["ctx"] for s in sessions) / len(sessions) if sessions else None,
         "session_length": sum(s["calls"] for s in sessions) / len(sessions) if sessions else None,
     }

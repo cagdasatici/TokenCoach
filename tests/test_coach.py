@@ -254,6 +254,40 @@ class ApplyToFiles(Base):
         self.assertTrue(im["ready"])
         self.assertAlmostEqual(im["changes"]["responses_per_prompt"], -0.5, places=2)
         self.assertAlmostEqual(im["changes"]["cost_per_prompt"], -0.5, places=2)
+        # No quota was attributed on either side, so no quota change is claimed.
+        self.assertIsNone(im["before"]["quota_per_prompt"])
+        self.assertIsNone(im["after"]["quota_per_prompt"])
+        self.assertNotIn("quota_per_prompt", im["changes"])
+
+
+class MissingQuota(Base):
+    """A prompt with no attributed quota is unknown, not zero."""
+
+    def stats_for(self, quotas):
+        for i, q in enumerate(quotas):
+            self.add_prompt(f"p{i}", "x", session=f"s{i}", calls=1, ts=1000 + i)
+            self.conn.execute("UPDATE calls SET quota_5h_pct = ? WHERE prompt_id = ?", (q, f"p{i}"))
+        return coach._window_stats(self.conn, 0, 2000, None, ("claude_code",))
+
+    def test_all_missing_is_unavailable(self):
+        s = self.stats_for([None, None])
+        self.assertIsNone(s["quota_per_prompt"])
+        self.assertEqual((s["quota_known"], s["prompts"]), (0, 2))
+
+    def test_missing_is_left_out_of_the_average(self):
+        s = self.stats_for([None, 4])
+        self.assertEqual(s["quota_per_prompt"], 4)
+        self.assertEqual((s["quota_known"], s["prompts"]), (1, 2))
+
+    def test_known_zero_counts(self):
+        s = self.stats_for([0, 4])
+        self.assertEqual(s["quota_per_prompt"], 2)
+        self.assertEqual((s["quota_known"], s["prompts"]), (2, 2))
+
+    def test_empty_period_is_unavailable(self):
+        s = self.stats_for([])
+        self.assertIsNone(s["quota_per_prompt"])
+        self.assertEqual((s["quota_known"], s["prompts"]), (0, 0))
 
 
 class ImproveAndTemplates(Base):

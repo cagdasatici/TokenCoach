@@ -483,10 +483,17 @@ const ago = t => { const d = Math.round((D.generated - t) / DAY); return d < 1 ?
 function impactBlock(l) {
   const im = l.impact; if (!im) return '';
   if (!im.ready) return `<div class="why">Measuring: ${im.after.prompts} of ${im.needed} prompts since it was applied.</div>`;
-  const lab = {cost_per_prompt:'cost per prompt', quota_per_prompt:'quota per prompt', responses_per_prompt:'responses per prompt', peak_context:'peak context', session_length:'session length'};
+  const lab = {cost_per_prompt:'cost per prompt', responses_per_prompt:'responses per prompt', peak_context:'peak context', session_length:'session length'};
   const cells = Object.entries(im.changes).filter(([k]) => lab[k]).slice(0, 4).map(([k, v]) =>
     `<div><b class="${v <= 0 ? 'better' : 'worse'}">${v <= 0 ? '−' : '+'}${Math.abs(Math.round(v * 100))}%</b><span>${lab[k]}</span></div>`);
-  return cells.length ? `<div class="gain num">${cells.join('')}</div>` : '<div class="why">No change yet.</div>';
+  return (cells.length ? `<div class="gain num">${cells.join('')}</div>` : '<div class="why">No change yet.</div>') + quotaLine(im);
+}
+// Prompts without quota data are left out of the average, so show how many were measured.
+function quotaLine(im) {
+  const side = s => s.prompts ? `${s.quota_per_prompt == null ? 'unavailable' : pct(s.quota_per_prompt)} (${s.quota_known} of ${s.prompts} prompts measured)` : 'unavailable (no prompts)';
+  const ch = im.changes.quota_per_prompt, r = ch == null ? null : Math.round(ch * 100);
+  const delta = r == null ? '' : r === 0 ? ', no change' : `, ${r < 0 ? '−' : '+'}${Math.abs(r)}%`;
+  return `<div class="why num">5-hour quota per prompt: ${side(im.before)} before, ${side(im.after)} after${delta}.</div>`;
 }
 function lessonRow(l) {
   const kind = l.status === 'applied' ? 'working' : l.status === 'ready' ? 'ready' : 'maybe';
