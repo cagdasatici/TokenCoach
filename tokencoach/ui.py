@@ -14,7 +14,7 @@ from datetime import datetime, timezone, timedelta
 
 from tokencoach.config import (
     APP_NAME, REPO_URL, UPSTREAM_URL, LAUNCH_AGENT_LABEL, LAUNCH_AGENT_PLIST, LOG_FILE, log, load_config, save_config, notif_enabled, set_notif,
-    install_python,
+    install_python, QUIT_MARKER,
     REFRESH_INTERVALS, DEFAULT_REFRESH,
     WARN_THRESHOLD, CRIT_THRESHOLD, PACING_ALERT_MINUTES,
     UPDATE_CHECK_INTERVAL, HISTORY_COLORS,
@@ -862,9 +862,14 @@ def _quit_app(_sender=None):
 
     The launch agent is KeepAlive, so simply exiting would be undone within
     seconds. Unload the job first; launchd then has nothing to respawn. The
-    plist stays on disk, so it starts again at the next login - and the Dock
-    launcher or the doctor can bring it back before then.
+    plist stays on disk, so it starts again at the next login or from the Dock
+    launcher. The marker tells the doctor's watchdog to leave it stopped.
     """
+    try:
+        with open(QUIT_MARKER, "w") as f:
+            f.write(f"{time.time():.0f}\n")
+    except OSError:
+        log.debug("could not write quit marker", exc_info=True)
     try:
         subprocess.run(
             ["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"],
@@ -1945,6 +1950,12 @@ class TokenCoachApp(rumps.App):
         self._ledger_status = ""
         self._optimizer_running = False
         self._last_lesson_scan = 0.0
+        try:
+            os.remove(QUIT_MARKER)        # started again, so the watchdog may supervise it
+        except FileNotFoundError:
+            pass
+        except OSError:
+            log.debug("could not remove quit marker", exc_info=True)
         # Before the dashboard starts: a copy that hands over to launchd must not
         # hold the dashboard port while the supervised copy binds it.
         from tokencoach.legacy import finish_legacy_install

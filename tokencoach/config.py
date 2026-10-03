@@ -40,6 +40,8 @@ APP_SUPPORT = os.environ.get("TOKENCOACH_DATA_DIR") or os.path.expanduser(
 LOG_DIR = os.path.join(APP_SUPPORT, "logs") if os.environ.get("TOKENCOACH_DATA_DIR") \
     else os.path.expanduser("~/Library/Logs/TokenCoach")
 CONFIG_FILE = os.path.join(APP_SUPPORT, "config.json")
+# Left by Quit, removed when the app starts: the doctor must not bring it back.
+QUIT_MARKER = os.path.join(APP_SUPPORT, "quit-by-user")
 LOG_FILE = os.path.join(LOG_DIR, "tokencoach.log")
 
 # Locations used before the rename (by AIQuotaBar and its fork). Moved once.

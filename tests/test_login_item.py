@@ -115,3 +115,64 @@ class OtherCopies(unittest.TestCase):
                 patch.object(ui.os, "kill") as kill:
             self.assertEqual(ui._stop_other_copies(), [101])
         kill.assert_called_once_with(101, 15)
+
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+BAR = "io.github.cagdasatici.tokencoach"
+
+
+class QuitSticks(unittest.TestCase):
+    """Quit must last until the next login or a manual start: the doctor's
+    watchdog used to bring the app back within two minutes."""
+
+    def test_quit_leaves_the_marker(self):
+        from tokencoach import ui
+        with tempfile.TemporaryDirectory() as d:
+            marker = os.path.join(d, "quit-by-user")
+            with patch.object(ui, "QUIT_MARKER", marker), \
+                    patch.object(ui.subprocess, "run") as run, \
+                    patch.object(ui.rumps, "quit_application"):
+                ui._quit_app()
+            self.assertTrue(os.path.exists(marker))
+            self.assertIn("bootout", run.call_args.args[0])
+
+    def run_doctor(self, quit_by_user):
+        """Doctor sections 1-2, 4 and 8 in a scratch HOME; launchctl is a stub
+        that logs its arguments and reports nothing loaded or running."""
+        script = (REPO / "tokencoach-doctor.sh").read_text()
+        cut = lambda a, b: script[script.index(f"# ── {a}."):script.index(f"# ── {b}.")]
+        body = script[:script.index("# ── 3.")] + cut(4, 5) + cut(8, 9)
+        with tempfile.TemporaryDirectory() as d:
+            home, bin_ = pathlib.Path(d, "home"), pathlib.Path(d, "bin")
+            agents = home / "Library/LaunchAgents"
+            data = home / "Library/Application Support/TokenCoach"
+            for p in (agents, data / "widget", bin_):
+                p.mkdir(parents=True)
+            with open(agents / f"{BAR}.plist", "wb") as f:
+                plistlib.dump({"Label": BAR, "KeepAlive": True}, f)
+            cache = data / "widget/usage.json"
+            cache.write_text("{}")
+            os.utime(cache, (0, 0))                                   # stale
+            if quit_by_user:
+                (data / "quit-by-user").write_text("1\n")
+            log = pathlib.Path(d, "launchctl.log")
+            for name, text in {
+                "launchctl": f'#!/bin/bash\necho "$*" >> "{log}"\n'
+                             '[ "$1" = bootstrap ] || [ "$1" = kickstart ] || exit 1\n',
+                "crontab": "#!/bin/bash\necho '* * * * * tokencoach-doctor.sh'\n",
+            }.items():
+                (bin_ / name).write_text(text)
+                (bin_ / name).chmod(0o755)
+            subprocess.run(["/bin/bash", "-c", body], cwd=d, capture_output=True, text=True,
+                           env={"HOME": str(home), "PATH": f"{bin_}:/usr/bin:/bin:/usr/sbin"})
+            calls = log.read_text().splitlines() if log.exists() else []
+        return [c for c in calls if c.split()[0] in ("bootstrap", "kickstart")
+                and (c.endswith(f"/{BAR}") or c.endswith(f"/{BAR}.plist"))]
+
+    def test_watchdog_starts_a_stopped_app(self):
+        starts = self.run_doctor(quit_by_user=False)
+        self.assertTrue(any(c.startswith("bootstrap") for c in starts))
+        self.assertTrue(any(c.startswith("kickstart") for c in starts))
+
+    def test_watchdog_leaves_a_quit_app_alone(self):
+        self.assertEqual(self.run_doctor(quit_by_user=True), [])

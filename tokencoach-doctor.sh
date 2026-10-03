@@ -20,6 +20,9 @@ HOST_LABEL="io.github.cagdasatici.tokencoach.widgethost"
 HOST_APP="/Applications/TokenCoachWidget.app"
 HOST_BIN="$HOST_APP/Contents/MacOS/TokenCoachWidget"
 CACHE="$HOME/Library/Application Support/TokenCoach/widget/usage.json"
+# Written by Quit, removed when the app starts: never bring a quit app back.
+QUIT_MARKER="$HOME/Library/Application Support/TokenCoach/quit-by-user"
+user_quit()  { [ -f "$QUIT_MARKER" ]; }
 UID_NUM=$(id -u)
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
@@ -88,8 +91,10 @@ if [ ! -f "$AGENTS/$BAR_LABEL.plist" ] || \
    ! plutil -extract KeepAlive xml1 -o - "$AGENTS/$BAR_LABEL.plist" 2>/dev/null | grep -q "<true/>"; then
     if repairing; then
         write_bar_plist
-        launchctl bootout "gui/$UID_NUM/$BAR_LABEL" 2>/dev/null
-        launchctl bootstrap "gui/$UID_NUM" "$AGENTS/$BAR_LABEL.plist" 2>/dev/null
+        if ! user_quit; then
+            launchctl bootout "gui/$UID_NUM/$BAR_LABEL" 2>/dev/null
+            launchctl bootstrap "gui/$UID_NUM" "$AGENTS/$BAR_LABEL.plist" 2>/dev/null
+        fi
         say_fixed "menu bar agent: now restarts on any exit"
     else
         say_failed "menu bar agent: only restarts after a crash"
@@ -184,6 +189,8 @@ for label in "$BAR_LABEL" "$HOST_LABEL"; do
     [ -f "$AGENTS/$label.plist" ] || continue
     if launchctl print "gui/$UID_NUM/$label" >/dev/null 2>&1; then
         say_ok "$label loaded"
+    elif [ "$label" = "$BAR_LABEL" ] && user_quit; then
+        say_ok "$label not loaded (you quit it; starts again at login)"
     elif repairing; then
         launchctl bootstrap "gui/$UID_NUM" "$AGENTS/$label.plist" 2>/dev/null
         say_fixed "$label bootstrapped"
@@ -221,6 +228,8 @@ if [ "$count" -gt 1 ]; then
     fi
 elif [ "$count" -eq 1 ]; then
     say_ok "exactly one menu bar instance"
+elif user_quit; then
+    say_ok "menu bar app stopped (you quit it)"
 else
     if repairing; then
         launchctl kickstart -k "gui/$UID_NUM/$BAR_LABEL" 2>/dev/null
@@ -283,6 +292,8 @@ if [ -f "$CACHE" ]; then
     age=$(( $(date +%s) - $(stat -f %m "$CACHE") ))
     if [ "$age" -lt 600 ]; then
         say_ok "usage data fresh (${age}s old)"
+    elif user_quit; then
+        say_ok "usage data ${age}s old (app quit by you)"
     elif repairing; then
         launchctl kickstart -k "gui/$UID_NUM/$BAR_LABEL" 2>/dev/null
         say_fixed "usage data was ${age}s stale - restarted menu bar app"
