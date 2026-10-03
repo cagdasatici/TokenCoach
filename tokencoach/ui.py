@@ -37,6 +37,7 @@ from tokencoach.history import (
 from tokencoach.widget import _write_widget_cache, _is_widget_installed
 from tokencoach.update import _check_and_apply_update, _restart_app
 from tokencoach import ledger as _ledger
+from tokencoach import providers as _providers
 from tokencoach import health
 
 
@@ -3443,6 +3444,14 @@ class TokenCoachApp(rumps.App):
             self._auth_fail_count = 0
             _notify(APP_NAME, "Cookies auto-detected \u2713", "Fetching usage data\u2026")
             self._schedule_fetch()
+        elif _providers.last_blocked_browsers:
+            names = ", ".join(b.title() for b in _providers.last_blocked_browsers)
+            _notify(
+                APP_NAME,
+                f"macOS kept TokenCoach out of {names}",
+                "Its privacy protection blocks reading another app's data. Use "
+                "Set Session Cookie\u2026 in this menu instead.",
+            )
         else:
             _notify(
                 APP_NAME,

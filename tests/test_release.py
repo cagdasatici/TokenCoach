@@ -6,6 +6,7 @@ import tempfile as _tempfile
 # Isolate from the real data folder before anything imports tokencoach.
 _os.environ.setdefault("TOKENCOACH_DATA_DIR", _tempfile.mkdtemp(prefix="tokencoach-test-"))
 
+import json
 import os
 import pathlib
 import subprocess
@@ -391,6 +392,28 @@ class CookiesStayOutOfTheLog(unittest.TestCase):
             self.assertEqual(len(providers._run_cookie_detection("claude.ai", "sessionKey")), 1)
         self.assertNotIn("SECRETVALUE", "\n".join(logs.output))
         self.assertIn("candidates=1", "\n".join(logs.output))
+
+    def test_browsers_macos_blocks_are_reported(self):
+        # Found on the owner's Mac: macOS privacy protection kept the app out of
+        # Chrome's folder; the lookup said "nothing found" and nobody knew why.
+        from tokencoach import providers
+        done = subprocess.CompletedProcess([], 0, stdout="[]", stderr='{"blocked": ["chrome"]}')
+        with patch.object(providers.subprocess, "run", return_value=done):
+            self.assertEqual(providers._run_cookie_detection("claude.ai", "sessionKey"), [])
+        self.assertEqual(providers.last_blocked_browsers, ["chrome"])
+
+    def test_detect_script_flags_unreadable_cookie_stores(self):
+        import sys
+        from tokencoach import providers
+        with tempfile.TemporaryDirectory() as d:
+            pathlib.Path(d, "browser_cookie3.py").write_text(
+                "def chrome(domain_name):\n    raise Exception('Unable to read database file')\n"
+                "def safari(domain_name):\n    raise PermissionError(1, 'Operation not permitted')\n"
+                "def firefox(domain_name):\n    raise Exception('Could not find Firefox profile directory')\n")
+            r = subprocess.run([sys.executable, "-c", providers._DETECT_SCRIPT, "claude.ai", "sessionKey"],
+                               capture_output=True, text=True, env={**os.environ, "PYTHONPATH": d})
+        self.assertEqual(r.stdout.strip(), "[]")
+        self.assertEqual(sorted(json.loads(r.stderr)["blocked"]), ["chrome", "safari"])
 
     def test_unanswered_keychain_note_does_not_stop_detection(self):
         # Found on the owner's Mac: the note timed out on an idle Mac, the fetch

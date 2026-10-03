@@ -664,6 +664,7 @@ BROWSERS = [
 # uses the first that actually authenticates -- a stale session in one
 # browser must never mask a valid one in another.
 candidates = []  # list of (expires_seconds, cookie_str)
+blocked = []     # browsers whose cookie store exists but macOS would not let us read
 
 try:
     import browser_cookie3
@@ -689,10 +690,14 @@ try:
                 expires /= 1000.0
             cookie_str = '; '.join(f'{k}={c.value}' for k, c in cookies.items())
             candidates.append((expires, cookie_str))
-        except Exception:
-            pass
+        except Exception as e:
+            # macOS privacy protection on another app's data folder surfaces as
+            # PermissionError, or as this message from the Chromium reader.
+            if isinstance(e, PermissionError) or 'Unable to read database file' in str(e):
+                blocked.append(name)
 except Exception:
     pass
+sys.stderr.write(json.dumps({'blocked': blocked}))
 
 # Rank best-first: latest (normalized) expiry, tie-break by richest jar.
 candidates.sort(key=lambda x: (x[0], len(x[1])), reverse=True)
@@ -702,17 +707,26 @@ print(json.dumps(result))
 """
 
 
+last_blocked_browsers: list[str] = []   # from the latest lookup, for the menu's message
+
+
 def _run_cookie_detection(domain: str, target_cookie: str) -> list[str]:
     """Run browser_cookie3 in an isolated child process (crash-safe).
 
     Returns a best-first ranked list of candidate cookie strings (one per
     browser that has the target cookie). Empty list if none are found.
     """
+    global last_blocked_browsers
+    last_blocked_browsers = []
     try:
         r = subprocess.run(
             [sys.executable, "-c", _DETECT_SCRIPT, domain, target_cookie],
             capture_output=True, text=True, timeout=60,
         )
+        try:
+            last_blocked_browsers = list(json.loads(r.stderr.strip().splitlines()[-1])["blocked"])
+        except (ValueError, KeyError, IndexError, TypeError):
+            pass
         data = json.loads(r.stdout.strip()) if r.stdout.strip() else []
         # stdout is the cookie jar itself: log how many were found, never the values
         log.debug("cookie-detect rc=%d candidates=%d err=%r", r.returncode,
