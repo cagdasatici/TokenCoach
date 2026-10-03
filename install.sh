@@ -103,7 +103,7 @@ ok "Code: $INSTALL_DIR ($(git -C "$INSTALL_DIR" rev-parse --short HEAD))"
 PYTHON="$VENV_DIR/bin/python3"
 say "↓  Installing Python dependencies (first run takes a minute)…"
 "$PYTHON" -m pip install --quiet --disable-pip-version-check --upgrade pip
-"$PYTHON" -m pip install --quiet --disable-pip-version-check --upgrade -r "$INSTALL_DIR/requirements.txt"
+"$PYTHON" -m pip install --quiet --disable-pip-version-check --require-hashes -r "$INSTALL_DIR/requirements.txt"
 # rumps notifications need a bundle identifier next to the interpreter
 [ -f "$VENV_DIR/bin/Info.plist" ] || \
   /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string $LABEL" "$VENV_DIR/bin/Info.plist" >/dev/null

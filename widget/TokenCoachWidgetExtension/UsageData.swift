@@ -88,7 +88,7 @@ enum UsageDataReader {
         let pw = getpwuid(getuid())
         let home = pw.flatMap { String(cString: $0.pointee.pw_dir) } ?? "/tmp"
         return URL(fileURLWithPath: home)
-            .appendingPathComponent("Library/Application Support/TokenCoach/usage.json")
+            .appendingPathComponent("Library/Application Support/TokenCoach/widget/usage.json")
     }()
 
     static func read() -> UsageSnapshot? {

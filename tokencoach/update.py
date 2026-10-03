@@ -1,4 +1,11 @@
-"""Silent auto-update via git pull."""
+"""Silent auto-update via git, limited to commits signed by a trusted key.
+
+The app holds browser cookies and runs inside every Claude Code prompt (the
+nudge hook), so a push to the repository must not be enough to run code on an
+install. An update only moves to a `main` commit whose SSH signature verifies
+against `allowed_signers` in the copy already installed: a pushed change can't
+vouch for itself, and a key change has to be signed by a key trusted before it.
+"""
 
 import os
 import re
@@ -7,9 +14,23 @@ import sys
 
 from tokencoach.config import LAUNCH_AGENT_LABEL, log
 
+SIGNERS_FILE = "allowed_signers"
+
+
+def _signed_by_trusted_key(run, install_dir: str, commit: str) -> bool:
+    """True if `commit` carries a good SSH signature from a key listed in the
+    installed checkout's allowed_signers file (read before any update)."""
+    signers = os.path.join(install_dir, SIGNERS_FILE)
+    if not os.path.isfile(signers):
+        log.warning("auto-update skipped: %s is missing, so no update can be trusted", SIGNERS_FILE)
+        return False
+    r = run(["git", "-c", f"gpg.ssh.allowedSignersFile={signers}",
+             "log", "-1", "--format=%G?", commit])
+    return r.returncode == 0 and r.stdout.strip() == "G"
+
 
 def _check_and_apply_update(install_dir: str | None = None) -> bool:
-    """Silently check for updates via git and apply if available. Returns True if updated."""
+    """Check for a signed update via git and apply it if there is one. Returns True if updated."""
     install_dir = install_dir or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if not os.path.isdir(os.path.join(install_dir, ".git")):
         return False  # Not a git install (Homebrew, dev, etc.)
@@ -32,13 +53,18 @@ def _check_and_apply_update(install_dir: str | None = None) -> bool:
         if branch != "main" or dirty or not behind:
             log.info("auto-update skipped: local changes or not a plain main checkout")
             return False
-        r = run(["git", "merge", "--ff-only", "origin/main", "--quiet"])
+        if not _signed_by_trusted_key(run, install_dir, remote):
+            log.warning("auto-update skipped: %s is not signed by a key in %s", remote[:8], SIGNERS_FILE)
+            return False
+        # Merge the commit that was verified, not whatever origin/main names by now.
+        r = run(["git", "merge", "--ff-only", "--quiet", remote])
         if r.returncode != 0:
             log.warning("auto-update merge failed: %s", r.stderr)
             return False
         venv_pip = os.path.join(install_dir, ".venv", "bin", "pip")
         if os.path.exists(venv_pip):
-            run([venv_pip, "install", "--quiet", "-r",
+            # requirements.txt carries hashes, so pip refuses any file that differs.
+            run([venv_pip, "install", "--quiet", "--require-hashes", "-r",
                  os.path.join(install_dir, "requirements.txt")])
         log.info("auto-update applied: %s → %s", local[:8], remote[:8])
         return True

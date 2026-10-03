@@ -5,7 +5,8 @@ import os
 import subprocess
 from datetime import datetime, timezone
 
-from tokencoach.config import log, WIDGET_HOST_APP, WIDGET_CACHE_DIR, WIDGET_CACHE_FILE
+from tokencoach.config import (log, WIDGET_HOST_APP, WIDGET_CACHE_DIR, WIDGET_CACHE_FILE,
+                               WIDGET_LEGACY_CACHE_FILE)
 from tokencoach.providers import LimitRow, UsageData, ProviderData
 
 
@@ -18,7 +19,7 @@ def _write_widget_cache(
 ) -> None:
     """Write current usage snapshot for the WidgetKit widget.
 
-    Writes to ~/Library/Application Support/TokenCoach/usage.json
+    Writes to ~/Library/Application Support/TokenCoach/widget/usage.json
     using atomic replace so the widget never reads a partial file.
     Failures are logged but never crash the main app.
     """
@@ -82,12 +83,18 @@ def _write_widget_cache(
             "windows": windows or [],
         }
 
-        os.makedirs(WIDGET_CACHE_DIR, exist_ok=True)
-        tmp = os.path.join(WIDGET_CACHE_DIR, ".usage.json.tmp")
-        with open(tmp, "w") as f:
-            json.dump(payload, f, indent=2)
-        os.replace(tmp, WIDGET_CACHE_FILE)
-        log.debug("widget cache written: %s", WIDGET_CACHE_FILE)
+        os.makedirs(WIDGET_CACHE_DIR, mode=0o700, exist_ok=True)
+        targets = [WIDGET_CACHE_FILE]
+        if _widget_reads_legacy_path():
+            targets.append(WIDGET_LEGACY_CACHE_FILE)
+        elif os.path.exists(WIDGET_LEGACY_CACHE_FILE):
+            os.remove(WIDGET_LEGACY_CACHE_FILE)
+        for path in targets:
+            tmp = os.path.join(os.path.dirname(path), ".usage.json.tmp")
+            with open(tmp, "w") as f:
+                json.dump(payload, f, indent=2)
+            os.replace(tmp, path)
+        log.debug("widget cache written: %s", ", ".join(targets))
 
         # The host watches this directory and refreshes the widget when a new
         # file lands, so all that is needed here is for it to be running.
@@ -98,6 +105,28 @@ def _write_widget_cache(
         ensure_widget_host_running()
     except Exception:
         log.debug("_write_widget_cache failed", exc_info=True)
+
+
+_legacy_reader: bool | None = None
+
+
+def _widget_reads_legacy_path() -> bool:
+    """True while the installed widget predates the move into widget/: it
+    reads usage.json from the data folder itself (and its sandbox exception
+    still names that whole folder). Rebuilding the widget ends this. Checked
+    once per run."""
+    global _legacy_reader
+    if _legacy_reader is None:
+        _legacy_reader = False
+        ext = os.path.join(WIDGET_HOST_APP, "Contents", "PlugIns", "TokenCoachWidgetExtension.appex")
+        if os.path.isdir(ext):
+            try:
+                out = subprocess.run(["codesign", "-d", "--entitlements", "-", "--xml", ext],
+                                     capture_output=True, text=True, timeout=10).stdout
+                _legacy_reader = "Application Support/TokenCoach/</string>" in out
+            except (OSError, subprocess.SubprocessError):
+                log.debug("could not read the widget's entitlements", exc_info=True)
+    return _legacy_reader
 
 
 def _is_widget_installed() -> bool:

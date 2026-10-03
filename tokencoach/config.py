@@ -140,8 +140,12 @@ WARN_THRESHOLD = 80   # notify when any limit crosses this %
 CRIT_THRESHOLD = 95   # title turns red emoji above this %
 
 WIDGET_HOST_APP = "/Applications/TokenCoachWidget.app"
-WIDGET_CACHE_DIR = APP_SUPPORT
+# Its own folder: the widget's sandbox exception covers only this, not the
+# config (cookies) and ledger (every prompt) next to it.
+WIDGET_CACHE_DIR = os.path.join(APP_SUPPORT, "widget")
 WIDGET_CACHE_FILE = os.path.join(WIDGET_CACHE_DIR, "usage.json")
+WIDGET_LEGACY_CACHE_FILE = os.path.join(APP_SUPPORT, "usage.json")   # read by widgets built before 1.2
+os.makedirs(WIDGET_CACHE_DIR, mode=0o700, exist_ok=True)   # the widget host watches it from launch
 
 # ── notification defaults ─────────────────────────────────────────────────────
 # Keys stored in config under "notifications": { key: bool }

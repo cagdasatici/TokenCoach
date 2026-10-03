@@ -98,7 +98,10 @@ def _get(url: str, cookies: dict) -> dict | list:
         url, cookies=_strip_cf_cookies(cookies), headers=HEADERS, timeout=15,
         impersonate=_IMPERSONATE,
     )
-    log.debug("GET %s  status=%s  body=%s", url, r.status_code, r.text[:800])
+    # Only error bodies: a successful /api/account or /api/bootstrap reply holds
+    # the person's email and organisation, and the log is attached to bug reports.
+    log.debug("GET %s  status=%s%s", url, r.status_code,
+              f"  body={r.text[:300]}" if r.status_code >= 400 else "")
     r.raise_for_status()
     return r.json()
 
@@ -619,13 +622,24 @@ def _warn_keychain_once():
     if _keychain_warned:
         return
     _keychain_warned = True
+    try:
+        _show_keychain_note()
+    except (OSError, subprocess.SubprocessError):
+        # Nobody clicked OK in time (the Mac was idle): the note is only a
+        # heads-up, so go on to the browser lookup instead of failing the fetch.
+        log.debug("keychain note not acknowledged", exc_info=True)
+
+
+def _show_keychain_note():
     subprocess.run(
         ["osascript", "-e",
-         'display dialog "TokenCoach needs one-time access to your '
-         'browser cookies to read your Claude usage.\\n\\n'
-         'macOS will show a security prompt — click \\"Always Allow\\" '
-         'and it will never ask again." '
-         'with title "TokenCoach — One-time Setup" '
+         'display dialog "TokenCoach reads your claude.ai sign-in from your '
+         'browser to show your Claude usage.\\n\\n'
+         'macOS will ask for access to the browser\'s cookie key. Click \\"Allow\\". '
+         '\\"Always Allow\\" would also let any other Python script on this Mac '
+         'read that key without asking. TokenCoach only looks again when you '
+         'choose Auto-detect from Browser or your session expires." '
+         'with title "TokenCoach — Browser sign-in" '
          'buttons {"OK"} default button "OK" '
          'with icon note'],
         capture_output=True, timeout=60,
@@ -699,10 +713,11 @@ def _run_cookie_detection(domain: str, target_cookie: str) -> list[str]:
             [sys.executable, "-c", _DETECT_SCRIPT, domain, target_cookie],
             capture_output=True, text=True, timeout=60,
         )
-        log.debug("cookie-detect rc=%d out=%r err=%r",
-                  r.returncode, r.stdout[:200], r.stderr[:200])
-        if r.stdout.strip():
-            data = json.loads(r.stdout.strip())
+        data = json.loads(r.stdout.strip()) if r.stdout.strip() else []
+        # stdout is the cookie jar itself: log how many were found, never the values
+        log.debug("cookie-detect rc=%d candidates=%d err=%r", r.returncode,
+                  len(data) if isinstance(data, list) else 1, r.stderr[:200])
+        if data:
             if isinstance(data, list):
                 return [c for c in data if c]
             if isinstance(data, str):   # backward-compat with old single result

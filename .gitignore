@@ -50,3 +50,6 @@ xcuserdata/
 
 # Stray process output
 nohup.out
+
+# Local security audit reports
+.gstack/

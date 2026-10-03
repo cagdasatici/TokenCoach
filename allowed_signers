@@ -1,0 +1,4 @@
+# SSH keys trusted to sign main. Auto-update (tokencoach/update.py) only installs
+# commits signed by one of these, checked against the copy already installed.
+# Format: see ALLOWED SIGNERS in ssh-keygen(1). Rotate a key with a commit signed by an old one.
+cagdasatici@gmail.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILBrpptHB4fRmR1pA0/laZahxqKJTMIn/mIREGAKm6LZ

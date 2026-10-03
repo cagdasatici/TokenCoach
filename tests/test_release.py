@@ -150,9 +150,13 @@ class Packaging(unittest.TestCase):
 
     def test_requirements_are_exact(self):
         # auto-update installs these; a range would pull in whatever was published last
-        lines = [l.strip() for l in (REPO / "requirements.txt").read_text().splitlines()]
-        loose = [l for l in lines if l and not l.startswith("#") and "==" not in l]
+        text = (REPO / "requirements.txt").read_text().replace("\\\n", " ")
+        reqs = [l.strip() for l in text.splitlines() if l.strip() and not l.lstrip().startswith("#")]
+        loose = [l for l in reqs if "==" not in l]
         self.assertEqual(loose, [])
+        # ...and pinned by hash, so a swapped file on PyPI fails the install
+        unhashed = [l.split()[0] for l in reqs if "--hash=sha256:" not in l]
+        self.assertEqual(unhashed, [])
 
 
 class PrivateFiles(unittest.TestCase):
@@ -224,29 +228,74 @@ class AutoUpdate(unittest.TestCase):
         return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd,
                               capture_output=True, text=True, check=True).stdout.strip()
 
+    def keygen(self, name):
+        key = pathlib.Path(self.tmp.name) / name
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", name, "-f", str(key)],
+                       check=True, capture_output=True)
+        return key
+
+    def signed_commit(self, key, msg):
+        self.git(self.origin, "-c", "gpg.format=ssh", "-c", f"user.signingkey={key}",
+                 "commit", "-S", "-qam", msg)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         root = pathlib.Path(self.tmp.name)
+        self.trusted, self.stranger = self.keygen("trusted"), self.keygen("stranger")
         self.origin, self.clone = root / "origin", root / "clone"
         self.origin.mkdir()
         self.git(self.origin, "init", "-q", "-b", "main")
         (self.origin / "a.txt").write_text("1\n")
+        pub = " ".join(pathlib.Path(f"{self.trusted}.pub").read_text().split()[:2])
+        (self.origin / "allowed_signers").write_text(f't@t namespaces="git" {pub}\n')
         self.git(self.origin, "add", ".")
         self.git(self.origin, "commit", "-qm", "one")
         self.git(root, "clone", "-q", str(self.origin), str(self.clone))
         (self.origin / "a.txt").write_text("2\n")
-        self.git(self.origin, "commit", "-qam", "two")
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_clean_main_checkout_updates(self):
+    def test_commit_signed_by_trusted_key_updates(self):
         from tokencoach.update import _check_and_apply_update
+        self.signed_commit(self.trusted, "two")
         self.assertTrue(_check_and_apply_update(str(self.clone)))
         self.assertEqual((self.clone / "a.txt").read_text(), "2\n")
 
+    def test_unsigned_or_untrusted_commits_are_refused(self):
+        from tokencoach.update import _check_and_apply_update
+        self.git(self.origin, "commit", "-qam", "unsigned")
+        self.assertFalse(_check_and_apply_update(str(self.clone)))
+        (self.origin / "a.txt").write_text("3\n")
+        self.signed_commit(self.stranger, "signed by someone else")
+        self.assertFalse(_check_and_apply_update(str(self.clone)))
+        self.assertEqual((self.clone / "a.txt").read_text(), "1\n")
+
+    def test_a_push_cannot_trust_its_own_key(self):
+        """The signer list comes from the installed copy, not from the update."""
+        from tokencoach.update import _check_and_apply_update
+        pub = " ".join(pathlib.Path(f"{self.stranger}.pub").read_text().split()[:2])
+        (self.origin / "allowed_signers").write_text(f'x@x namespaces="git" {pub}\n')
+        self.signed_commit(self.stranger, "trust me")
+        self.assertFalse(_check_and_apply_update(str(self.clone)))
+
+    def test_missing_signer_list_refuses(self):
+        from tokencoach.update import _check_and_apply_update
+        self.signed_commit(self.trusted, "two")
+        os.remove(self.clone / "allowed_signers")
+        self.git(self.clone, "update-index", "--assume-unchanged", "allowed_signers")
+        self.assertFalse(_check_and_apply_update(str(self.clone)))
+
+    def test_shipped_signer_list_is_valid(self):
+        lines = [l for l in (REPO / "allowed_signers").read_text().splitlines()
+                 if l.strip() and not l.startswith("#")]
+        self.assertTrue(lines)
+        for l in lines:
+            self.assertRegex(l, r'^\S+ namespaces="git" ssh-ed25519 [A-Za-z0-9+/=]+$')
+
     def test_local_edits_and_branches_are_left_alone(self):
         from tokencoach.update import _check_and_apply_update
+        self.signed_commit(self.trusted, "two")
         (self.clone / "a.txt").write_text("my edit\n")
         self.assertFalse(_check_and_apply_update(str(self.clone)))
         self.assertEqual((self.clone / "a.txt").read_text(), "my edit\n")
@@ -330,6 +379,27 @@ class DashboardAccessLog(unittest.TestCase):
         self.assertNotIn("s3cr3t-Tok_en", logs.output[0])
         self.assertIn("GET /?t=", logs.output[0])
         self.assertIn("&x=1", logs.output[0])
+
+
+class CookiesStayOutOfTheLog(unittest.TestCase):
+    def test_detected_cookie_values_are_not_logged(self):
+        from tokencoach import providers
+        jar = '["sessionKey=sk-ant-sid01-SECRETVALUE; lastActiveOrg=org-1"]'
+        done = subprocess.CompletedProcess([], 0, stdout=jar, stderr="")
+        with patch.object(providers.subprocess, "run", return_value=done), \
+                self.assertLogs(providers.log, level="DEBUG") as logs:
+            self.assertEqual(len(providers._run_cookie_detection("claude.ai", "sessionKey")), 1)
+        self.assertNotIn("SECRETVALUE", "\n".join(logs.output))
+        self.assertIn("candidates=1", "\n".join(logs.output))
+
+    def test_unanswered_keychain_note_does_not_stop_detection(self):
+        # Found on the owner's Mac: the note timed out on an idle Mac, the fetch
+        # failed, and detection (once per start) never ran.
+        from tokencoach import providers
+        with patch.object(providers, "_keychain_warned", False), \
+                patch.object(providers.subprocess, "run",
+                             side_effect=subprocess.TimeoutExpired("osascript", 60)):
+            providers._warn_keychain_once()            # must not raise
 
 
 class DoctorCronRepair(unittest.TestCase):

@@ -324,7 +324,9 @@ def install(install_dir: str, path: str = CLAUDE_SETTINGS) -> None:
     backup = path + ".tokencoach-backup"
     if os.path.exists(path) and not os.path.exists(backup):
         # Keep the first backup: it holds the settings from before TokenCoach.
-        with open(path) as f, open(backup, "w") as b:
+        # Owner-only: settings.json can carry API keys in its "env" block.
+        fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with open(path) as f, os.fdopen(fd, "w") as b:
             b.write(f.read())
     hooks = settings.setdefault("hooks", {})
     entries = [e for e in hooks.get("UserPromptSubmit") or []
@@ -351,7 +353,11 @@ def uninstall(path: str = CLAUDE_SETTINGS) -> None:
 def _write_settings(path: str, settings: dict) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
-    with open(tmp, "w") as f:
+    # Keep the file's own permissions; a new one is owner-only.
+    mode = os.stat(path).st_mode & 0o777 if os.path.exists(path) else 0o600
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    os.fchmod(fd, mode)                     # a stale .tmp keeps its old mode otherwise
+    with os.fdopen(fd, "w") as f:
         json.dump(settings, f, indent=2)
         f.write("\n")
     os.replace(tmp, path)

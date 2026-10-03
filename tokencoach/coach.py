@@ -9,7 +9,10 @@ Lesson lifecycle
   applied -> measured before/after; can be removed again
 
 Confidence is never taken on the model's word alone: it is capped by how much
-independent evidence (distinct sessions) supports the lesson.
+independent evidence (distinct sessions) supports the lesson. Lessons proposed
+by Analyze never become "ready" at all: the model picks the prompts it cites,
+and its input holds whatever was pasted into those prompts, so a rule it writes
+reaches the instruction files only after the person reads and confirms it.
 
 Files are edited only inside a clearly marked block, rebuilt from the applied
 lessons each time, with a dated backup of the original first.
@@ -29,6 +32,7 @@ from tokencoach.nudge import BROAD, SPECIFIC
 
 READY = 0.95
 REVIEW = 0.70
+ANALYSIS_MAX = 0.94      # Analyze's lessons stop below READY: always confirmed by the person
 DETECT_DAYS = 30
 MAX_RULE_CHARS = 600
 BACKUP_DIR = os.path.join(os.path.dirname(ledger.LEDGER_DB), "backups")
@@ -66,6 +70,8 @@ def status_of(lesson: dict) -> str:
     if lesson["status"] != "open":
         return lesson["status"]
     c = lesson["confidence"]
+    if lesson.get("origin") == "analysis":
+        c = min(c, ANALYSIS_MAX)
     return "ready" if c >= READY else "review" if c >= REVIEW else "collecting"
 
 
@@ -244,7 +250,7 @@ def record_analysis_lessons(conn, lessons: list[dict], scopes: dict[int, dict]) 
             model_conf = float(l.get("confidence") or 0)
         except (TypeError, ValueError):
             model_conf = 0.0
-        conf = min(max(model_conf, 0.0), evidence_factor(k))
+        conf = min(max(model_conf, 0.0), evidence_factor(k), ANALYSIS_MAX)
         norm = re.sub(r"\W+", " ", rule.lower()).strip()
         _upsert(conn, {
             "id": _lesson_id("analysis", scope, norm),
@@ -418,7 +424,8 @@ def dismiss_lesson(conn, lesson_id: str) -> None:
 def apply_ready(conn) -> list[str]:
     """Apply every open lesson at or above READY. Returns the files written."""
     written = []
-    for r in conn.execute("SELECT * FROM lessons WHERE status = 'open' AND confidence >= ?", (READY,)).fetchall():
+    for r in conn.execute("SELECT * FROM lessons WHERE status = 'open' AND confidence >= ? "
+                          "AND origin != 'analysis'", (READY,)).fetchall():
         try:
             written += apply_lesson(conn, r["id"])
         except ValueError:

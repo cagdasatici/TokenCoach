@@ -58,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let home = getpwuid(getuid())
             .flatMap { String(cString: $0.pointee.pw_dir) } ?? NSHomeDirectory()
         return URL(fileURLWithPath: home)
-            .appendingPathComponent("Library/Application Support/TokenCoach")
+            .appendingPathComponent("Library/Application Support/TokenCoach/widget")
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

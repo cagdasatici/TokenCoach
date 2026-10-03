@@ -561,6 +561,9 @@ document.addEventListener('click', async e => {
     const r = await busy(b, 'Applying…', () => api('lesson/apply', {id, confirm: act === 'apply-confirm'}));
     if (r) { toast('Written to ' + fileList(r.files)); setTimeout(() => location.reload(), 900); }
   } else if (act === 'apply-ready') {
+    // the rules sit in collapsed Details: show exactly what is about to be written
+    const ready = C.lessons.filter(l => l.status === 'ready');
+    if (!confirm(`Add these rules?\n\n${ready.map(l => `• “${l.rule}”\n   → ${fileList(l.files)}`).join('\n\n')}`)) return;
     const r = await busy(b, 'Applying…', () => api('lessons/apply-ready'));
     if (r) { toast('Written to ' + fileList(r.files)); setTimeout(() => location.reload(), 900); }
   } else if (act === 'edit') {

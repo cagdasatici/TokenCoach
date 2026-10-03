@@ -19,7 +19,7 @@ BAR_LABEL="io.github.cagdasatici.tokencoach"
 HOST_LABEL="io.github.cagdasatici.tokencoach.widgethost"
 HOST_APP="/Applications/TokenCoachWidget.app"
 HOST_BIN="$HOST_APP/Contents/MacOS/TokenCoachWidget"
-CACHE="$HOME/Library/Application Support/TokenCoach/usage.json"
+CACHE="$HOME/Library/Application Support/TokenCoach/widget/usage.json"
 UID_NUM=$(id -u)
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 

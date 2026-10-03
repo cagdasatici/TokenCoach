@@ -192,8 +192,10 @@ like its closest published sibling and labelled *estimated*. Override anything i
 - **What is read:** Claude Code transcripts (`~/.claude/projects`), Cowork logs, Codex sessions
   (`~/.codex/sessions`), commit messages, dates and file names (`git log`) of repositories you
   chose to track, and, for the quota bars, your claude.ai / chatgpt.com session cookies
-  from your browser (macOS may ask for Keychain access once). Cookies are only ever sent to
-  claude.ai / chatgpt.com.
+  from your browser. macOS asks for Keychain access to read them; click **Allow**, not
+  **Always Allow**, which would let any Python script on your Mac read that key unasked.
+  TokenCoach looks once at start and again only when you ask or a session expires. Cookies
+  are only ever sent to claude.ai / chatgpt.com, and never written to the log.
 - **What leaves, and only when you click:** **Analyze deeper** and **Improve** send a digest of
   your costliest prompts (or the one prompt) to Claude through *your own* `claude` CLI, running
   Sonnet 5 with all tools off. That counts against your Claude plan like any Claude Code prompt,
@@ -201,7 +203,12 @@ like its closest published sibling and labelled *estimated*. Override anything i
 - **What changes on your Mac:** a login agent, a small watchdog that restarts the app if it
   dies, the Claude Code hook (a backup of `~/.claude/settings.json` is written first, and you
   can turn nudges off in the menu), lesson blocks you choose to apply, and a git hook in each
-  repository you track with `--yield-install`. The uninstaller removes all of it.
+  repository you track with `--yield-install`. The uninstaller removes all of it. Lessons that
+  Analyze proposes are never applied without you reading and confirming the exact rule.
+- **Updates:** a script install updates itself only to commits on `main` signed by a key in
+  [`allowed_signers`](allowed_signers), checked against the copy you already have, and installs
+  Python packages only if their hashes match `requirements.txt`. Homebrew installs update with
+  `brew upgrade`.
 
 ## Troubleshooting
 
