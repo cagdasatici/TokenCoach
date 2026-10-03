@@ -132,9 +132,11 @@ curl -fsSL https://raw.githubusercontent.com/cagdasatici/TokenCoach/main/install
 **Homebrew:**
 ```bash
 brew tap cagdasatici/tokencoach https://github.com/cagdasatici/TokenCoach
+brew trust --formula cagdasatici/tokencoach/tokencoach   # Homebrew 7 asks before loading formulae from other taps
 brew install tokencoach
 tokencoach &          # first run adds it to your login items
 ```
+Upgrading from 1.1.0 with `brew upgrade`: run `tokencoach &` once afterwards. The 1.1.0 login item points at a folder the upgrade removes; starting 1.2.0 repairs it.
 
 **Just look first.** The demo uses sample data and doesn't read or change anything of yours:
 ```bash

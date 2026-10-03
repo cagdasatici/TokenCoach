@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 import logging
 import logging.handlers
 
@@ -13,6 +14,21 @@ REPO_URL = "https://github.com/cagdasatici/TokenCoach"
 LAUNCH_AGENT_LABEL = "io.github.cagdasatici.tokencoach"
 LAUNCH_AGENT_PLIST = os.path.expanduser(f"~/Library/LaunchAgents/{LAUNCH_AGENT_LABEL}.plist")
 UPSTREAM_URL = "https://github.com/yagcioglutoprak/AIQuotaBar"
+
+
+def install_python(root: str) -> str:
+    """Interpreter to record in the login agent and the Claude Code hook.
+
+    The install's own venv, reached through `root`: the script install's
+    .venv, or Homebrew's venv under opt/tokencoach, a path that survives
+    upgrades. Homebrew resolves sys.executable to Cellar/tokencoach/<version>,
+    which the next `brew upgrade` deletes.
+    """
+    for rel in (".venv/bin/python3", "venv/bin/python"):
+        py = os.path.join(root, rel)
+        if os.path.exists(py):
+            return py
+    return sys.executable
 
 # ── where things live ────────────────────────────────────────────────────────
 # TOKENCOACH_DATA_DIR points everything at another folder (tests, demo data).
@@ -93,7 +109,8 @@ os.makedirs(APP_SUPPORT, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
 # Owner-only: the folder holds the dashboard token, session cookies and every
 # prompt in the ledger. Files written before this existed are tightened too.
-for _path, _mode in ((APP_SUPPORT, 0o700), (CONFIG_FILE, 0o600)):
+# The log folder as well: old logs can hold the dashboard token or API replies.
+for _path, _mode in ((APP_SUPPORT, 0o700), (CONFIG_FILE, 0o600), (LOG_DIR, 0o700)):
     try:
         os.chmod(_path, _mode)
     except OSError:

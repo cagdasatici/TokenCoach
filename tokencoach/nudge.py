@@ -21,7 +21,7 @@ import sys
 import time
 
 from tokencoach import ledger
-from tokencoach.config import load_config, HISTORY_DB, APP_NAME
+from tokencoach.config import load_config, install_python, HISTORY_DB, APP_NAME
 
 HOOK_MARKER = "tokencoach_nudge.py"
 TAIL_BYTES = 400_000
@@ -289,10 +289,7 @@ CLAUDE_SETTINGS = os.path.expanduser("~/.claude/settings.json")
 
 
 def hook_command(install_dir: str) -> str:
-    py = os.path.join(install_dir, ".venv", "bin", "python3")
-    if not os.path.exists(py):
-        py = sys.executable
-    return f'"{py}" "{os.path.join(install_dir, HOOK_MARKER)}"'
+    return f'"{install_python(install_dir)}" "{os.path.join(install_dir, HOOK_MARKER)}"'
 
 
 def _load_settings(path: str) -> dict:

@@ -51,6 +51,9 @@ class Tokencoach < Formula
 
       Before `brew uninstall tokencoach`, run `tokencoach --cleanup` to remove
       its login item and Claude Code hook.
+
+      Upgrading from 1.1.0: run `tokencoach &` once, so it can repair the
+      login item that 1.1.0 pointed at the folder this upgrade removed.
     EOS
   end
 

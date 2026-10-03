@@ -14,6 +14,7 @@ from datetime import datetime, timezone, timedelta
 
 from tokencoach.config import (
     APP_NAME, REPO_URL, UPSTREAM_URL, LAUNCH_AGENT_LABEL, LAUNCH_AGENT_PLIST, LOG_FILE, log, load_config, save_config, notif_enabled, set_notif,
+    install_python,
     REFRESH_INTERVALS, DEFAULT_REFRESH,
     WARN_THRESHOLD, CRIT_THRESHOLD, PACING_ALERT_MINUTES,
     UPDATE_CHECK_INTERVAL, HISTORY_COLORS,
@@ -775,14 +776,44 @@ def _is_login_item() -> bool:
     return os.path.exists(LAUNCH_AGENT_PLIST)
 
 
-def _add_login_item():
+def _login_item_args() -> list[str]:
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return [install_python(root), _script_path()]
+
+
+def _login_item_current() -> bool:
+    """The agent exists and launches this install. One written by an older
+    Homebrew version points at a Cellar folder that `brew upgrade` deleted."""
     import plistlib
-    path = _script_path()
+    try:
+        with open(LAUNCH_AGENT_PLIST, "rb") as f:
+            return plistlib.load(f).get("ProgramArguments") == _login_item_args()
+    except Exception:
+        return False
+
+
+def _job_pid(wait: float = 0.0) -> int | None:
+    """PID launchd reports for our agent, waiting up to `wait` seconds for one."""
+    import re
+    deadline = time.time() + wait
+    while True:
+        out = subprocess.run(["launchctl", "list", LAUNCH_AGENT_LABEL],
+                             capture_output=True, text=True).stdout
+        m = re.search(r'"PID" = (\d+);', out)
+        if m or time.time() >= deadline:
+            return int(m.group(1)) if m else None
+        time.sleep(0.5)
+
+
+def _add_login_item(handoff: bool = False) -> bool:
+    """Write the agent and load it. With `handoff`, returns True when launchd
+    now runs its own supervised copy, so this process should exit: two copies
+    would show two icons."""
+    import plistlib
     plist = LAUNCH_AGENT_PLIST
-    python_exe = sys.executable
     plist_data = {
         "Label": LAUNCH_AGENT_LABEL,
-        "ProgramArguments": [python_exe, path],
+        "ProgramArguments": _login_item_args(),
         "RunAtLoad": True,
         # Restart on ANY exit. This used to be {"SuccessfulExit": False}, which
         # respawns only after a crash - so any clean exit left the app dead
@@ -797,9 +828,15 @@ def _add_login_item():
     os.makedirs(os.path.dirname(plist), exist_ok=True)
     with open(plist, "wb") as f:
         plistlib.dump(plist_data, f)
+    if _job_pid() == os.getpid():
+        return False        # we are the job; launchd reads the new file at the next login
+    # a job loaded from a stale file keeps failing to spawn until it is reloaded
+    subprocess.run(["launchctl", "unload", plist], capture_output=True)
     result = subprocess.run(["launchctl", "load", plist], capture_output=True)
     if result.returncode != 0:
         log.warning("launchctl load failed: %s", result.stderr.decode(errors="replace"))
+        return False
+    return handoff and _job_pid(wait=3) not in (None, os.getpid())
 
 
 def _quit_app(_sender=None):
@@ -1897,8 +1934,12 @@ class TokenCoachApp(rumps.App):
 
         from tokencoach.legacy import finish_legacy_install
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if not finish_legacy_install(root) and not _is_login_item():
-            _add_login_item()
+        if not finish_legacy_install(root) and not _login_item_current():
+            if _add_login_item(handoff=True):
+                log.info("login agent written; handing over to the copy launchd started")
+                if self._dashboard is not None:
+                    self._dashboard.stop()
+                os._exit(0)
 
         # Floating panel (premium UI that replaces NSMenu)
         self._panel = _UsagePanel(self)
