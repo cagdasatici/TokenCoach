@@ -805,6 +805,24 @@ def _job_pid(wait: float = 0.0) -> int | None:
         time.sleep(0.5)
 
 
+def _stop_other_copies() -> list[int]:
+    """Stop other menu bar copies of this install, such as one started by hand
+    before the login item existed. Homebrew installs have no doctor to do it."""
+    script = _script_path()
+    out = subprocess.run(["ps", "-Ao", "pid=,args="], capture_output=True, text=True).stdout
+    stopped = []
+    for line in out.splitlines():
+        pid, _, args = line.strip().partition(" ")
+        parts = args.split()
+        if len(parts) == 2 and parts[1] == script and pid.isdigit() and int(pid) != os.getpid():
+            try:
+                os.kill(int(pid), 15)
+                stopped.append(int(pid))
+            except OSError:
+                pass
+    return stopped
+
+
 def _add_login_item(handoff: bool = False) -> bool:
     """Write the agent and load it. With `handoff`, returns True when launchd
     now runs its own supervised copy, so this process should exit: two copies
@@ -1890,6 +1908,11 @@ class TokenCoachApp(rumps.App):
         self._prev_pcts: dict[str, int] = {}  # previous pct per row key (reset detection)
         self._auth_fail_count = 0
         self._chatgpt_cookie_retry_after = 0.0
+        # Providers whose cookies were looked for unasked this run. Reading
+        # Chromium cookies needs the browser's Keychain key, so with nothing
+        # saved we look once, not on every refresh; the menu's detect items
+        # and repeated auth failures still look again.
+        self._auto_detected: set[str] = set()
         self._fetching = False
         self._last_updated: datetime | None = None
 
@@ -1934,12 +1957,15 @@ class TokenCoachApp(rumps.App):
 
         from tokencoach.legacy import finish_legacy_install
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if not finish_legacy_install(root) and not _login_item_current():
-            if _add_login_item(handoff=True):
+        if not finish_legacy_install(root):
+            if not _login_item_current() and _add_login_item(handoff=True):
                 log.info("login agent written; handing over to the copy launchd started")
                 if self._dashboard is not None:
                     self._dashboard.stop()
                 os._exit(0)
+            if _job_pid() == os.getpid():
+                for pid in _stop_other_copies():
+                    log.info("stopped another copy of this install (pid %d)", pid)
 
         # Floating panel (premium UI that replaces NSMenu)
         self._panel = _UsagePanel(self)
@@ -2606,7 +2632,8 @@ class TokenCoachApp(rumps.App):
         try:
             with self._config_lock:
                 sk = self.config.get("cookie_str")
-            if not sk:
+            if not sk and "claude" not in self._auto_detected:
+                self._auto_detected.add("claude")
                 sk = _auto_detect_cookies()
                 if sk:
                     with self._config_lock:
@@ -3011,7 +3038,8 @@ class TokenCoachApp(rumps.App):
         for cfg_key in COOKIE_PROVIDERS:
             with self._config_lock:
                 has_key = bool(self.config.get(cfg_key))
-            if not has_key:
+            if not has_key and cfg_key not in self._auto_detected:
+                self._auto_detected.add(cfg_key)
                 detect_fn = _cookie_detectors.get(cfg_key)
                 if detect_fn:
                     ck = detect_fn()
@@ -3144,18 +3172,21 @@ class TokenCoachApp(rumps.App):
                                 f"Make sure you are logged into {name} in your browser.")
                 return
             # API key-based
+            # The saved key is never pre-filled: the dialog travels as an
+            # osascript command-line argument, which other processes can read.
             current = self.config.get(cfg_key, "")
             key = _ask_text(
                 title=f"{APP_NAME} \u2014 {name}",
-                prompt=f"Paste your {name} API key.\nLeave blank to remove.",
-                default=current,
+                prompt=(f"A {name} API key ending in \u2026{current[-4:]} is saved. Paste a new one to "
+                        "replace it, type remove to delete it, or leave this empty to keep it."
+                        if current else f"Paste your {name} API key."),
             )
-            if key is None:
+            if key is None or not key.strip():
                 return
-            if key.strip():
-                self.config[cfg_key] = key.strip()
-            else:
+            if key.strip().lower() == "remove":
                 self.config.pop(cfg_key, None)
+            else:
+                self.config[cfg_key] = key.strip()
             save_config(self.config)
             self._schedule_fetch()
         return _cb
@@ -3311,8 +3342,11 @@ class TokenCoachApp(rumps.App):
                 "  2. F12 \u2192 Network tab \u2192 click any request to claude.ai\n"
                 "  3. In Headers, find the 'cookie:' row\n"
                 "  4. Right-click it \u2192 Copy value  (long string with semicolons)"
+                + ("\n\nCookies are saved already; leave this empty to keep them."
+                   if self.config.get("cookie_str") else "")
             ),
-            default=self.config.get("cookie_str", ""),
+            # Never pre-fill the saved cookie: osascript gets the dialog as a
+            # command-line argument, which other processes can read.
         )
         if key:
             self.config["cookie_str"] = key.strip()

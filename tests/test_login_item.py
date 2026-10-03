@@ -97,3 +97,21 @@ class LoginAgent(unittest.TestCase):
         handed_over, calls = self.run_add([os.getpid()])
         self.assertFalse(handed_over)
         self.assertEqual(calls, [])
+
+
+class OtherCopies(unittest.TestCase):
+    def test_stops_only_plain_copies_of_this_script(self):
+        from tokencoach import ui
+        script = "/opt/homebrew/opt/tokencoach/libexec/tokencoach.py"
+        me = os.getpid()
+        ps = "\n".join([
+            f"{me} /usr/bin/python {script}",                    # this process
+            f"101 /usr/bin/python {script}",                     # stray copy
+            f"102 /usr/bin/python {script} --demo",              # the demo stays
+            "103 /usr/bin/python /elsewhere/tokencoach.py",      # another install
+        ])
+        with patch.object(ui, "_script_path", return_value=script), \
+                patch.object(ui.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, ps, "")), \
+                patch.object(ui.os, "kill") as kill:
+            self.assertEqual(ui._stop_other_copies(), [101])
+        kill.assert_called_once_with(101, 15)
