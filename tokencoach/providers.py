@@ -120,15 +120,17 @@ def _org_id_from_api(cookies: dict) -> str | None:
     ):
         try:
             data = _get(f"https://claude.ai{path}", cookies)
+            # The usage endpoint takes the org's uuid; its numeric `id` gets HTTP 400.
+            org = lambda o: (o or {}).get("uuid") or (o or {}).get("id")
             if isinstance(data, list) and data:
-                return data[0].get("id") or data[0].get("uuid")
+                return org(data[0])
             if isinstance(data, dict):
                 for candidate in (
                     data.get("organization_id"),
                     data.get("org_id"),
-                    (data.get("organizations") or [{}])[0].get("id"),
-                    (data.get("account", {}).get("memberships") or [{}])[0]
-                        .get("organization", {}).get("id"),
+                    org((data.get("organizations") or [{}])[0]),
+                    org((data.get("account", {}).get("memberships") or [{}])[0]
+                        .get("organization")),
                 ):
                     if candidate:
                         return candidate

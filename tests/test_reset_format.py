@@ -131,3 +131,26 @@ class SharedFormatterSource(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OrgLookup(unittest.TestCase):
+    """Found on the owner's Mac: with only a sessionKey (no lastActiveOrg
+    cookie), the org came from /api/organizations, whose numeric `id` the
+    usage endpoint rejects with HTTP 400. It needs the org's uuid."""
+
+    UUID = "8f2c0d6e-1b4a-4c55-9a7e-3d2b1c0f9e88"
+
+    def test_list_reply_uses_uuid_not_numeric_id(self):
+        from unittest.mock import patch
+        from tokencoach import providers
+        reply = [{"id": 30187357, "uuid": self.UUID, "name": "Personal"}]
+        with patch.object(providers, "_get", return_value=reply):
+            self.assertEqual(providers._org_id_from_api({"sessionKey": "x"}), self.UUID)
+
+    def test_dict_replies_use_uuid_too(self):
+        from unittest.mock import patch
+        from tokencoach import providers
+        for reply in ({"organizations": [{"id": 1, "uuid": self.UUID}]},
+                      {"account": {"memberships": [{"organization": {"id": 1, "uuid": self.UUID}}]}}):
+            with patch.object(providers, "_get", return_value=reply):
+                self.assertEqual(providers._org_id_from_api({"sessionKey": "x"}), self.UUID)
