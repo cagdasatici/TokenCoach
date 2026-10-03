@@ -125,8 +125,14 @@ def claude_quota_left(max_age: float = 20 * 60) -> int | None:
 
 # ── history-based signals ───────────────────────────────────────────────────
 
+REMINDER = re.compile(r"<system-reminder>.*?</system-reminder>", re.S | re.I)
+
+
 def _words(text: str) -> set[str]:
-    return {w for w in re.findall(r"[a-z0-9]{3,}", text.lower())}
+    # Harness-injected reminders (e.g. the scratch-workspace note on a session's
+    # first prompt) are identical across sessions, so they would make unrelated
+    # prompts look similar.
+    return {w for w in re.findall(r"[a-z0-9]{3,}", REMINDER.sub(" ", text).lower())}
 
 
 def broad_ask_stats(conn) -> tuple[float, float, float, float] | None:

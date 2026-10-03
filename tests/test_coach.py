@@ -101,6 +101,23 @@ class Nudges(Base):
         msgs = nudge.decide(self.event("migrate the billing service to the new payments api"), self.conn)
         self.assertIn("similar", [k for k, _ in msgs])
 
+    def test_similar_ignores_injected_system_reminders(self):
+        # The desktop app prepends the same scratch-workspace <system-reminder> to a
+        # session's first prompt; two unrelated first prompts must not look alike.
+        reminder = ("<system-reminder>\nThe user started this session without choosing a project folder, "
+                    "so your working directory is a scratch workspace the app created for it. It starts "
+                    "empty, belongs to this session only, and is removed once the session is deleted. "
+                    "Write deliverables the person should keep somewhere they can open.\n</system-reminder>\n")
+        self.add_prompt("old", reminder + "summarise the portfolio report and compare completion estimates",
+                        project="alpha", calls=90, cost=9.0)
+        msgs = nudge.decide(self.event(reminder + "plan the move from local folders to an ssh workflow"),
+                            self.conn)
+        self.assertNotIn("similar", [k for k, _ in msgs])
+        # a real repeat of the typed text still matches, reminder or not
+        again = nudge.decide(self.event(reminder + "summarise the portfolio report and compare "
+                                        "completion estimates"), self.conn)
+        self.assertIn("similar", [k for k, _ in again])
+
     def test_main_is_silent_on_errors_and_internal_runs(self):
         import io
         import sys
