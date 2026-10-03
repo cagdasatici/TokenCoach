@@ -339,31 +339,40 @@ def _chatgpt_token_expired(token: str, leeway_seconds: int = 30) -> bool:
         return False
 
 
-def _codex_access_token(account_id: str) -> str | None:
-    """Read a fresh Codex token only when its workspace matches this session.
+def _codex_signin() -> tuple[str, str] | None:
+    """(access token, account id) from the Codex CLI's ChatGPT sign-in.
 
-    This is a read-only fallback for an expired browser-issued token. Codex
-    owns token refresh and rotation; this app never writes its auth file.
+    Read-only: Codex owns token refresh and rotation; this app never writes
+    its auth file, keeps no copy, and sends the token only to chatgpt.com.
     """
     codex_home = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
-    auth_path = os.path.join(codex_home, "auth.json")
     try:
-        with open(auth_path) as f:
-            auth = json.load(f)
-        tokens = auth.get("tokens") or {}
+        with open(os.path.join(codex_home, "auth.json")) as f:
+            tokens = json.load(f).get("tokens") or {}
         if not isinstance(tokens, dict):
             return None
-        codex_account_id = tokens.get("account_id")
-        if not codex_account_id and isinstance(tokens.get("id_token"), str):
-            codex_account_id = _chatgpt_account_id({}, tokens["id_token"])
-        if not account_id or str(codex_account_id or "") != str(account_id):
-            return None
+        account_id = tokens.get("account_id")
+        if not account_id and isinstance(tokens.get("id_token"), str):
+            account_id = _chatgpt_account_id({}, tokens["id_token"])
         token = tokens.get("access_token")
-        if isinstance(token, str) and token and not _chatgpt_token_expired(token):
-            return token
-    except (OSError, ValueError, TypeError):
-        log.debug("Could not read Codex auth fallback", exc_info=True)
+        if isinstance(token, str) and token and account_id:
+            return token, str(account_id)
+    except (OSError, ValueError, TypeError, AttributeError):
+        log.debug("Could not read the Codex sign-in", exc_info=True)
     return None
+
+
+def codex_signin_available() -> bool:
+    return _codex_signin() is not None
+
+
+def _codex_access_token(account_id: str) -> str | None:
+    """A fresh Codex token, only when its workspace matches this session: the
+    fallback for an expired browser-issued token."""
+    signin = _codex_signin()
+    if not signin or not account_id or signin[1] != str(account_id):
+        return None
+    return None if _chatgpt_token_expired(signin[0]) else signin[0]
 
 
 def _chatgpt_session(cookies: dict) -> tuple[str | None, str | None]:
@@ -509,6 +518,36 @@ def fetch_chatgpt(cookie_str: str) -> ProviderData:
         return ProviderData("ChatGPT", error=message)
     except Exception as e:
         log.debug("fetch_chatgpt failed: %s", e)
+        return ProviderData("ChatGPT", error=f"ChatGPT request failed: {str(e)[:70]}")
+
+
+def fetch_chatgpt_codex(_unused=None) -> ProviderData:
+    """ChatGPT / Codex usage through the Codex CLI's own sign-in.
+
+    Used when no browser cookie is saved: on recent macOS the app may not read
+    another browser's cookies at all, while Codex holds a sign-in to the same
+    account that it keeps fresh itself.
+    """
+    signin = _codex_signin()
+    if not signin:
+        return ProviderData("ChatGPT", error="No ChatGPT sign-in found; sign in to Codex or chatgpt.com.")
+    token, account_id = signin
+    if _chatgpt_token_expired(token):
+        return ProviderData("ChatGPT", error="The Codex sign-in has expired; run codex once to renew it, "
+                                             "then click Refresh.")
+    h = {**_CHATGPT_HEADERS, "Authorization": f"Bearer {token}", "ChatGPT-Account-Id": account_id}
+    try:
+        return _parse_wham_usage(_api_get("https://chatgpt.com/backend-api/wham/usage", h))
+    except CurlHTTPError as e:
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        log.debug("fetch_chatgpt_codex failed with HTTP %s", status or "unknown")
+        if status == 401:
+            return ProviderData("ChatGPT", error="ChatGPT rejected the Codex sign-in (HTTP 401); run codex "
+                                                 "once to renew it, then click Refresh.")
+        return ProviderData("ChatGPT", error=f"ChatGPT request failed (HTTP {status})." if status
+                            else "ChatGPT request failed.")
+    except Exception as e:
+        log.debug("fetch_chatgpt_codex failed: %s", e)
         return ProviderData("ChatGPT", error=f"ChatGPT request failed: {str(e)[:70]}")
 
 

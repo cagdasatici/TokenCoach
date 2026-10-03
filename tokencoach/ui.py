@@ -2217,8 +2217,12 @@ class TokenCoachApp(rumps.App):
         providers_menu = rumps.MenuItem("API Providers")
         for cfg_key, (name, _) in PROVIDER_REGISTRY.items():
             is_set = bool(self.config.get(cfg_key))
-            marker = "\u2713" if is_set else "+"
-            if cfg_key in COOKIE_PROVIDERS:
+            via_codex = (cfg_key == "chatgpt_cookies" and not is_set
+                         and _providers.codex_signin_available())
+            marker = "\u2713" if is_set or via_codex else "+"
+            if via_codex:
+                label = f"{marker} {name} (via Codex sign-in)"
+            elif cfg_key in COOKIE_PROVIDERS:
                 label = f"{marker} {name} (auto-detect)"
             else:
                 label = f"{marker} {name} API Key\u2026"
@@ -3067,6 +3071,10 @@ class TokenCoachApp(rumps.App):
             key = keys_snapshot.get(cfg_key)
             if key:
                 tasks.append((fetch_fn, key))
+        if not keys_snapshot.get("chatgpt_cookies") and _providers.codex_signin_available():
+            # no browser session saved (macOS may keep us out of the browser):
+            # Codex's own sign-in to the same account
+            tasks.append((_providers.fetch_chatgpt_codex, None))
         if tasks:
             from concurrent.futures import ThreadPoolExecutor, as_completed
             results = []

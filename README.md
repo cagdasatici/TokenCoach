@@ -197,7 +197,8 @@ like its closest published sibling and labelled *estimated*. Override anything i
   Apple's `security` tool, so Always Allow lets any program on your Mac read that key unasked.
   TokenCoach looks once at start and again only when you ask or a session expires, and never
   asks when macOS's privacy protection keeps it out of the browser's folder (then use
-  **Set Session Cookie…**). Cookies
+  **Set Session Cookie…**). Without a ChatGPT browser session it uses the Codex CLI's own
+  sign-in (`~/.codex/auth.json`), read only, never copied, and sent only to chatgpt.com. Cookies
   are only ever sent to claude.ai / chatgpt.com, and never written to the log.
 - **What leaves, and only when you click:** **Analyze deeper** and **Improve** send a digest of
   your costliest prompts (or the one prompt) to Claude through *your own* `claude` CLI, running

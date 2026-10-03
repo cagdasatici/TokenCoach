@@ -154,3 +154,59 @@ class OrgLookup(unittest.TestCase):
                       {"account": {"memberships": [{"organization": {"id": 1, "uuid": self.UUID}}]}}):
             with patch.object(providers, "_get", return_value=reply):
                 self.assertEqual(providers._org_id_from_api({"sessionKey": "x"}), self.UUID)
+
+
+class ChatGPTFromCodex(unittest.TestCase):
+    """Found on the owner's Mac: macOS keeps the app out of the browser's
+    cookies, but Codex is signed in to the same ChatGPT account. Its sign-in
+    is read (never written) and sent only to chatgpt.com, as Codex does."""
+
+    def setUp(self):
+        import tempfile
+        from unittest.mock import patch
+        self.home = tempfile.TemporaryDirectory()
+        self.addCleanup(self.home.cleanup)
+        p = patch.dict(_os.environ, {"CODEX_HOME": self.home.name})
+        p.start()
+        self.addCleanup(p.stop)
+
+    def jwt(self, exp):
+        import base64, json
+        body = base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode()).decode().rstrip("=")
+        return f"h.{body}.s"
+
+    def write_auth(self, exp):
+        import json, time
+        token = self.jwt(time.time() + exp)
+        with open(_os.path.join(self.home.name, "auth.json"), "w") as f:
+            json.dump({"tokens": {"access_token": token, "account_id": "acct-1"}}, f)
+        return token
+
+    def test_usage_comes_from_the_codex_sign_in(self):
+        from unittest.mock import patch
+        from tokencoach import providers
+        token = self.write_auth(3600)
+        self.assertTrue(providers.codex_signin_available())
+        wham = {"rate_limit": {"primary_window": {"used_percent": 40, "reset_at": 2_000_000_000}}}
+        with patch.object(providers, "_api_get", return_value=wham) as get:
+            pd = providers.fetch_chatgpt_codex()
+        self.assertIsNone(pd.error)
+        self.assertEqual(pd._rows[0].pct, 40)
+        url, headers = get.call_args.args[:2]
+        self.assertTrue(url.startswith("https://chatgpt.com/"))
+        self.assertEqual(headers["Authorization"], f"Bearer {token}")
+        self.assertEqual(headers["ChatGPT-Account-Id"], "acct-1")
+        self.assertIsNone(get.call_args.kwargs.get("cookies"))
+
+    def test_expired_sign_in_says_how_to_renew(self):
+        from unittest.mock import patch
+        from tokencoach import providers
+        self.write_auth(-60)
+        with patch.object(providers, "_api_get") as get:
+            pd = providers.fetch_chatgpt_codex()
+        get.assert_not_called()
+        self.assertIn("codex", pd.error.lower())
+
+    def test_no_codex_sign_in(self):
+        from tokencoach import providers
+        self.assertFalse(providers.codex_signin_available())

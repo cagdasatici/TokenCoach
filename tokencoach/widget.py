@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from tokencoach.config import (log, WIDGET_HOST_APP, WIDGET_CACHE_DIR, WIDGET_CACHE_FILE,
                                WIDGET_LEGACY_CACHE_FILE)
-from tokencoach.providers import LimitRow, UsageData, ProviderData
+from tokencoach.providers import LimitRow, UsageData, ProviderData, codex_signin_available
 
 
 def _write_widget_cache(
@@ -39,6 +39,8 @@ def _write_widget_cache(
             for cfg_key, prov_id in _key_map.items():
                 if cfg.get(cfg_key):
                     active.append(prov_id)
+            if "chatgpt" not in active and codex_signin_available():
+                active.append("chatgpt")         # read through Codex's sign-in
             # Fallback: always show at least Claude
             return active or ["claude"]
 
