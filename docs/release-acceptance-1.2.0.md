@@ -54,24 +54,26 @@ Known limits:    the session has no Screen Recording or Accessibility permission
 
 ```
 Path:            B  Fresh install, Homebrew
-Revision:        <sha / formula version>   Install method: brew
-Machine / macOS:
-Steps run:       brew tap cagdasatici/tokencoach https://github.com/cagdasatici/TokenCoach && brew install tokencoach; tokencoach &
+Revision:        bb1e5b3 (formula 1.2.0, local git-archive tarball sha256 2a7c941b…)   Install method: brew
+Machine / macOS: Mac mini Mac18,5, macOS 27.0.1 (26A434), Homebrew 7.0.7
+Steps run:       no TokenCoach install or data; brew tap cagdasatici/tokencoach https://github.com/cagdasatici/TokenCoach; brew install tokencoach (tapped formula pointed at file:///…/TokenCoach-1.2.0.tar.gz, HOMEBREW_NO_AUTO_UPDATE=1); tokencoach &; probes
 Expected:        as A without the widget; login item added on first run
-Actual:
-Result:          not run
-Known limits:
+Actual:          Homebrew 7 refused the tap: "Refusing to load formula … from untrusted tap"; brew trust --formula cagdasatici/tokencoach/tokencoach was needed, and again after every brew uninstall. With that: install exit 0. First run wrote the login agent with the stable interpreter (opt/tokencoach/libexec/venv/bin/python), loaded it and handed over: exactly one process, supervised by launchd, dashboard on 127.0.0.1:47821, nudge hook on the opt path, ledger user_version 5 (684 prompts). First-run cookie dialog shown (no browser session on this account, see H).
+                 Findings on the way, fixed with tests in tests/test_login_item.py: 1fbd6b2 (interpreter path, see C), 887d9d9 and bb1e5b3: `tokencoach &` loaded the agent, launchd started a second copy, and both kept running (two processes, two icons; 1.1.0 does the same); now the manual copy hands over before starting its dashboard, and the job stops other plain copies of the same script.
+Result:          pass (with the brew trust step now in README)
+Known limits:    tarball from the local commit, not the published release asset; the menu bar icon itself not seen from this session (see A)
 ```
 
 ```
 Path:            C  Upgrade with existing data
-Revision:        from <v1.1.0 sha> to <sha>   Install method: brew | git
-Machine / macOS:
-Steps run:       install v1.1.0; use it (prompts, apply one lesson, nudges on); record probes; upgrade (brew upgrade, or git auto-update); probes again
+Revision:        from v1.1.0 (brew, published formula) to bb1e5b3 (local 1.2.0 tarball)   Install method: brew
+Machine / macOS: Mac mini Mac18,5, macOS 27.0.1 (26A434), Homebrew 7.0.7
+Steps run:       brew install tokencoach (1.1.0); tokencoach &; apply lesson 192fe048aa2d through the dashboard API (what the Apply button sends); nudges at default; probes; point the tapped formula at the local 1.2.0 tarball; brew upgrade tokencoach; tokencoach & (new caveat); probes; launchctl bootout + bootstrap of the agent as a stand-in for log out and in. Then 1.2.0 → 1.2.1 (same code, new version) with no manual step, and log-in stand-in again
 Expected:        row counts ≥ before; user_version = 5; lesson still applied and in CLAUDE.md; nudges on; menu bar icon visible after auto-update; exactly one process (pgrep -fl tokencoach)
-Actual:
-Result:          not run
-Known limits:    ledger part pre-checked on 2026-09-29 (see above); restart on macOS 26 (5ba0865) not yet seen
+Actual:          first run on 9a3f5c6 code FAILED: after brew upgrade the 1.1.0 login agent pointed at Cellar/tokencoach/1.1.0/libexec/venv/bin/python, which the upgrade deletes; at the next login launchd could not spawn it (exit 78, EX_CONFIG) and the app stayed gone. The nudge hook had the same stale path (silent by design, so nudges just stop). 1.2.0 wrote the same Cellar path, and never rewrote an existing agent.
+                 With the fixes (1fbd6b2, 887d9d9, bb1e5b3): user_version 1 → 5; prompts 684 → 684, calls 13917 → 13921; lesson 192fe048aa2d still applied and its line still in ~/.claude/CLAUDE.md; nudges on, hook re-pointed to opt/tokencoach/libexec/venv/bin/python. After `tokencoach &`: agent rewritten to the opt path and reloaded, exactly one process (1.1.0's stray manual copy stopped). Log-in stand-in: app starts. 1.2.0 → 1.2.1: Cellar/1.2.0 deleted, app starts at log-in with no manual step.
+Result:          pass on brew, with one manual step for people coming from 1.1.0 (`tokencoach &` once; in the formula caveats and README). Git auto-update half not run yet
+Known limits:    the 1.1.0 → 1.2.0 login breakage can't be fixed from 1.2.0 (nothing of 1.2.0 runs until started), hence the caveat. Also found: after `uninstall --purge` the lesson block stays in CLAUDE.md (as documented), but the next Apply rewrites the block from the new ledger and drops the orphaned lines (3 of 4 lessons here; the app keeps a backup). Not fixed; needs a decision. The owner's CLAUDE.md was restored from the pre-test backup afterwards
 ```
 
 ```
@@ -92,7 +94,8 @@ Machine / macOS: Mac mini Mac18,5, macOS 27.0.1 (26A434)
 Steps run:       backup of data, logs, ~/.claude/settings.json, ~/.claude/CLAUDE.md, agents; probes; bash ~/.tokencoach/uninstall.sh; probes; reinstall with the one-line installer; --yield-install on a scratch repo; uninstall.sh --purge; probes
 Expected:        no TokenCoach LaunchAgents; hook gone from ~/.claude/settings.json, other settings intact; widget removed; yield repo hooks removed; data kept without --purge, deleted with it; applied lessons stay in the marked block
 Actual:          uninstall.sh exit 0: 3 agents booted out and their plists deleted, doctor crontab line removed, app and widget processes gone, TokenCoachWidget.app and "Restart TokenCoach.app" removed, ~/.tokencoach removed. settings.json diff = only the TokenCoach UserPromptSubmit entry; the other UserPromptSubmit hook (iTerm2 cc-status) and all other keys unchanged; settings.json.tokencoach-backup kept. Data kept: ledger user_version 5, prompts 1160 → 1161, calls 22695 → 22701 (Claude Code was in use), 4 applied + 3 open lessons. ~/.claude/CLAUDE.md byte-identical, lesson block intact. Reinstall: exit 0, one app process, agents loaded, nudge hook restored, data intact. --purge: "Git hook removed from <scratch repo>" (prepare-commit-msg gone), data dir and ~/Library/Logs/TokenCoach deleted, CLAUDE.md still identical.
-Result:          pass (script install); Homebrew part (tokencoach --cleanup && brew uninstall) recorded under B
+Result:          pass (script install and Homebrew)
+Homebrew:        tokencoach --cleanup && brew uninstall tokencoach, four times during B and C: hook removed, login agent removed, app stopped, data kept; brew uninstall also drops the formula's tap trust.
 Known limits:    the ledger's original yield repo (~/Documents/Projects/investing) no longer exists on the mini, so hook removal was checked on a scratch repo instead
 ```
 
