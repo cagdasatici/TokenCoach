@@ -4,6 +4,7 @@ import base64
 import json
 import math
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -649,7 +650,7 @@ def _show_keychain_note():
 # Script run in a child process — isolates browser_cookie3 C-library crashes
 # (libcrypto / sqlite segfaults on Chromium decryption don't kill the main app).
 _DETECT_SCRIPT = r"""
-import sys, json, os, functools
+import sys, json, os, functools, glob
 
 lookups = json.loads(sys.argv[1])   # [[domain, target cookie], ...], read in one pass
 
@@ -659,14 +660,36 @@ BROWSERS = [
 ]
 # Chromium browsers keep their cookie key in the Keychain, and browser_cookie3
 # asks for it (a password prompt) before it even looks for the cookie file. So
-# look at the browser's folder first: when it isn't there, or macOS keeps us out
-# of it (privacy protection for other apps' data), a prompt would buy nothing.
+# look for the cookie file first: when there is none (a folder some other tool
+# left behind), or macOS keeps us out of it (privacy protection for other apps'
+# data), a prompt would buy nothing.
 CHROMIUM_HOMES = {
     'chrome': 'Google/Chrome', 'arc': 'Arc/User Data', 'brave': 'BraveSoftware/Brave-Browser',
     'edge': 'Microsoft Edge', 'chromium': 'Chromium', 'opera': 'com.operasoftware.Opera',
     'vivaldi': 'Vivaldi',
 }
 SUPPORT = os.path.expanduser('~/Library/Application Support')
+COOKIE_FILES = ('Cookies', 'Network/Cookies', '*/Cookies', '*/Network/Cookies')
+
+
+def cookie_store(home):
+    # 'absent', 'blocked' or 'readable' for a Chromium browser's data folder
+    try:
+        os.listdir(home)
+    except FileNotFoundError:
+        return 'absent'
+    except OSError:
+        return 'blocked'
+    files = [f for pat in COOKIE_FILES for f in glob.glob(os.path.join(glob.escape(home), pat))]
+    if not files:
+        return 'absent'
+    for f in files:
+        try:
+            open(f, 'rb').close()
+            return 'readable'
+        except OSError:
+            pass
+    return 'blocked'
 
 # Collect candidates from every browser that has the target cookie.
 # Rank by expiry as a hint, but the caller VALIDATES each candidate and
@@ -693,12 +716,10 @@ try:
         if fn is None:
             continue
         if name in CHROMIUM_HOMES:
-            try:
-                os.listdir(os.path.join(SUPPORT, CHROMIUM_HOMES[name]))
-            except FileNotFoundError:
-                continue
-            except OSError:
+            store = cookie_store(os.path.join(SUPPORT, CHROMIUM_HOMES[name]))
+            if store == 'blocked':
                 blocked.append(name)
+            if store != 'readable':
                 continue
         for domain, target in lookups:
             try:
@@ -737,6 +758,7 @@ print(json.dumps({domain: [c for _, c in sorted(cands, key=lambda x: (x[0], len(
 # serves both the Claude and the ChatGPT detection of a refresh.
 _LOOKUPS = [["claude.ai", "sessionKey"], ["chatgpt.com", "__Secure-next-auth.session-token"]]
 _LOOKUP_TTL = 30            # seconds: long enough for one refresh, short enough for a retry
+_DETECT_TIMEOUT = 90        # seconds, including time for the person to answer a Keychain prompt
 _lookup_cache: tuple[float, dict] = (0.0, {})
 last_blocked_browsers: list[str] = []   # from the latest lookup, for the menu's message
 
@@ -760,10 +782,19 @@ def _run_cookie_detection(domain: str, target_cookie: str) -> list[str]:
     lookups = _LOOKUPS if [domain, target_cookie] in _LOOKUPS else [[domain, target_cookie]]
     last_blocked_browsers, found = [], {}
     try:
-        r = subprocess.run(
+        # Own process group: on a timeout (a Keychain prompt nobody answered)
+        # the `security` child it started must go too, or its dialog stays up.
+        proc = subprocess.Popen(
             [sys.executable, "-c", _DETECT_SCRIPT, json.dumps(lookups)],
-            capture_output=True, text=True, timeout=90,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True,
         )
+        try:
+            out, errout = proc.communicate(timeout=_DETECT_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.communicate()
+            raise
+        r = subprocess.CompletedProcess(proc.args, proc.returncode, out, errout)
         try:
             last_blocked_browsers = list(json.loads(r.stderr.strip().splitlines()[-1])["blocked"])
             err = ""

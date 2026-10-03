@@ -382,6 +382,16 @@ class DashboardAccessLog(unittest.TestCase):
         self.assertIn("&x=1", logs.output[0])
 
 
+def fake_popen(done):
+    """A Popen stand-in that finishes with `done`'s output."""
+    class P:
+        def __init__(self, args, **kw):
+            self.args, self.pid, self.returncode = args, 0, done.returncode
+        def communicate(self, timeout=None):
+            return done.stdout, done.stderr
+    return P
+
+
 class CookiesStayOutOfTheLog(unittest.TestCase):
     def setUp(self):
         from tokencoach import providers
@@ -393,7 +403,7 @@ class CookiesStayOutOfTheLog(unittest.TestCase):
         from tokencoach import providers
         out = '{"claude.ai": ["sessionKey=sk-ant-sid01-SECRETVALUE; lastActiveOrg=org-1"], "chatgpt.com": []}'
         done = subprocess.CompletedProcess([], 0, stdout=out, stderr='{"blocked": []}')
-        with patch.object(providers.subprocess, "run", return_value=done), \
+        with patch.object(providers.subprocess, "Popen", side_effect=fake_popen(done)), \
                 self.assertLogs(providers.log, level="DEBUG") as logs:
             self.assertEqual(len(providers._run_cookie_detection("claude.ai", "sessionKey")), 1)
         self.assertNotIn("SECRETVALUE", "\n".join(logs.output))
@@ -404,7 +414,7 @@ class CookiesStayOutOfTheLog(unittest.TestCase):
         # Chrome's folder; the lookup said "nothing found" and nobody knew why.
         from tokencoach import providers
         done = subprocess.CompletedProcess([], 0, stdout="{}", stderr='{"blocked": ["chrome"]}')
-        with patch.object(providers.subprocess, "run", return_value=done):
+        with patch.object(providers.subprocess, "Popen", side_effect=fake_popen(done)):
             self.assertEqual(providers._run_cookie_detection("claude.ai", "sessionKey"), [])
         self.assertEqual(providers.last_blocked_browsers, ["chrome"])
 
@@ -414,10 +424,27 @@ class CookiesStayOutOfTheLog(unittest.TestCase):
         from tokencoach import providers
         out = '{"claude.ai": ["sessionKey=a"], "chatgpt.com": ["__Secure-next-auth.session-token=b"]}'
         done = subprocess.CompletedProcess([], 0, stdout=out, stderr='{"blocked": []}')
-        with patch.object(providers.subprocess, "run", return_value=done) as run:
+        with patch.object(providers.subprocess, "Popen", side_effect=fake_popen(done)) as popen:
             providers._run_cookie_detection("claude.ai", "sessionKey")
             providers._run_cookie_detection("chatgpt.com", "__Secure-next-auth.session-token")
-        self.assertEqual(run.call_count, 1)
+        self.assertEqual(popen.call_count, 1)
+
+    def test_timeout_also_ends_the_keychain_prompt(self):
+        # Found on the owner's Mac: the lookup timed out, but the `security`
+        # process it started kept its password dialog on screen.
+        from tokencoach import providers
+        with tempfile.TemporaryDirectory() as d:
+            pidfile = pathlib.Path(d, "pid")
+            script = ("import subprocess, sys, time\n"
+                      f"p = subprocess.Popen(['sleep', '30'])\nopen({str(pidfile)!r}, 'w').write(str(p.pid))\n"
+                      "time.sleep(30)\n")
+            with patch.object(providers, "_DETECT_SCRIPT", script), \
+                    patch.object(providers, "_DETECT_TIMEOUT", 1.5):
+                self.assertEqual(providers._run_cookie_detection("claude.ai", "sessionKey"), [])
+            pid = int(pidfile.read_text())
+        time.sleep(0.2)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(pid, 0)
 
     def run_script(self, home, fake_module):
         """Run the real lookup script against a stand-in browser_cookie3."""
@@ -457,9 +484,12 @@ class CookiesStayOutOfTheLog(unittest.TestCase):
     def test_no_keychain_prompt_for_missing_or_blocked_browsers(self):
         with tempfile.TemporaryDirectory() as home:
             support = pathlib.Path(home, "Library", "Application Support")
-            (support / "Google" / "Chrome").mkdir(parents=True)          # there, DB unreadable
-            (support / "BraveSoftware" / "Brave-Browser").mkdir(parents=True)
-            (support / "Microsoft Edge").mkdir(parents=True)             # there and readable
+            for d in ("Google/Chrome/Default", "BraveSoftware/Brave-Browser/Default",
+                      "Microsoft Edge/Profile 1/Network"):
+                (support / d).mkdir(parents=True)
+            (support / "Google/Chrome/Default/Cookies").write_text("")      # there, reader fails
+            (support / "Microsoft Edge/Profile 1/Network/Cookies").write_text("")   # readable
+            (support / "Vivaldi").mkdir()                    # a folder with no cookie store
             os.chmod(support / "BraveSoftware" / "Brave-Browser", 0)     # macOS keeps us out
             try:
                 found, blocked = self.run_script(home, self.FAKE)
@@ -468,7 +498,7 @@ class CookiesStayOutOfTheLog(unittest.TestCase):
             calls = pathlib.Path(home, "calls").read_text().splitlines()
         self.assertEqual(found, {"claude.ai": [], "chatgpt.com": []})
         self.assertEqual(sorted(blocked), ["brave", "chrome", "safari"])
-        # Vivaldi isn't installed and Brave is blocked: neither asks the Keychain
+        # Vivaldi has no cookie store and Brave is blocked: neither asks the Keychain
         self.assertFalse([c for c in calls if "Vivaldi" in c or "Brave" in c])
         # one Keychain prompt per browser, however many sites are read
         self.assertEqual(calls.count("keychain Edge Safe Storage"), 1)
