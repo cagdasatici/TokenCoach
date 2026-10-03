@@ -636,9 +636,9 @@ def _show_keychain_note():
          'display dialog "TokenCoach reads your claude.ai sign-in from your '
          'browser to show your Claude usage.\\n\\n'
          'macOS will ask for access to the browser\'s cookie key. Click \\"Allow\\". '
-         '\\"Always Allow\\" would also let any other Python script on this Mac '
-         'read that key without asking. TokenCoach only looks again when you '
-         'choose Auto-detect from Browser or your session expires." '
+         '\\"Always Allow\\" would hand that key to Apple\'s security tool, which any '
+         'program on this Mac can run, without asking again. TokenCoach only looks '
+         'again when you choose Auto-detect from Browser or your session expires." '
          'with title "TokenCoach — Browser sign-in" '
          'buttons {"OK"} default button "OK" '
          'with icon note'],
@@ -649,31 +649,65 @@ def _show_keychain_note():
 # Script run in a child process — isolates browser_cookie3 C-library crashes
 # (libcrypto / sqlite segfaults on Chromium decryption don't kill the main app).
 _DETECT_SCRIPT = r"""
-import sys, json
+import sys, json, os, functools
 
-domain  = sys.argv[1]
-target  = sys.argv[2]
+lookups = json.loads(sys.argv[1])   # [[domain, target cookie], ...], read in one pass
 
 BROWSERS = [
     'firefox', 'librewolf', 'chrome', 'arc', 'brave',
     'edge', 'chromium', 'opera', 'vivaldi', 'safari',
 ]
+# Chromium browsers keep their cookie key in the Keychain, and browser_cookie3
+# asks for it (a password prompt) before it even looks for the cookie file. So
+# look at the browser's folder first: when it isn't there, or macOS keeps us out
+# of it (privacy protection for other apps' data), a prompt would buy nothing.
+CHROMIUM_HOMES = {
+    'chrome': 'Google/Chrome', 'arc': 'Arc/User Data', 'brave': 'BraveSoftware/Brave-Browser',
+    'edge': 'Microsoft Edge', 'chromium': 'Chromium', 'opera': 'com.operasoftware.Opera',
+    'vivaldi': 'Vivaldi',
+}
+SUPPORT = os.path.expanduser('~/Library/Application Support')
 
 # Collect candidates from every browser that has the target cookie.
 # Rank by expiry as a hint, but the caller VALIDATES each candidate and
 # uses the first that actually authenticates -- a stale session in one
 # browser must never mask a valid one in another.
-candidates = []  # list of (expires_seconds, cookie_str)
+found = {domain: [] for domain, _ in lookups}   # domain -> [(expires_seconds, cookie_str)]
 blocked = []     # browsers whose cookie store exists but macOS would not let us read
+
+
+def unreadable(e):
+    # macOS privacy protection surfaces as PermissionError, or as this
+    # message from the Chromium reader.
+    return isinstance(e, PermissionError) or 'Unable to read database file' in str(e)
+
 
 try:
     import browser_cookie3
+    if hasattr(browser_cookie3, '_get_osx_keychain_password'):
+        # one Keychain prompt per browser, however many sites are read
+        browser_cookie3._get_osx_keychain_password = functools.lru_cache(maxsize=None)(
+            browser_cookie3._get_osx_keychain_password)
     for name in BROWSERS:
         fn = getattr(browser_cookie3, name, None)
         if fn is None:
             continue
-        try:
-            jar = fn(domain_name=domain)
+        if name in CHROMIUM_HOMES:
+            try:
+                os.listdir(os.path.join(SUPPORT, CHROMIUM_HOMES[name]))
+            except FileNotFoundError:
+                continue
+            except OSError:
+                blocked.append(name)
+                continue
+        for domain, target in lookups:
+            try:
+                jar = fn(domain_name=domain)
+            except Exception as e:
+                if unreadable(e):
+                    blocked.append(name)
+                    break                   # the same store holds every site's cookies
+                continue
             cookies = {x.name: x for x in jar}
             if target not in cookies:
                 continue
@@ -689,25 +723,28 @@ try:
             while expires > 1e11:
                 expires /= 1000.0
             cookie_str = '; '.join(f'{k}={c.value}' for k, c in cookies.items())
-            candidates.append((expires, cookie_str))
-        except Exception as e:
-            # macOS privacy protection on another app's data folder surfaces as
-            # PermissionError, or as this message from the Chromium reader.
-            if isinstance(e, PermissionError) or 'Unable to read database file' in str(e):
-                blocked.append(name)
+            found[domain].append((expires, cookie_str))
 except Exception:
     pass
 sys.stderr.write(json.dumps({'blocked': blocked}))
 
 # Rank best-first: latest (normalized) expiry, tie-break by richest jar.
-candidates.sort(key=lambda x: (x[0], len(x[1])), reverse=True)
-result = [c[1] for c in candidates]
-
-print(json.dumps(result))
+print(json.dumps({domain: [c for _, c in sorted(cands, key=lambda x: (x[0], len(x[1])), reverse=True)]
+                  for domain, cands in found.items()}))
 """
 
-
+# Every site TokenCoach reads, so one lookup (one Keychain prompt per browser)
+# serves both the Claude and the ChatGPT detection of a refresh.
+_LOOKUPS = [["claude.ai", "sessionKey"], ["chatgpt.com", "__Secure-next-auth.session-token"]]
+_LOOKUP_TTL = 30            # seconds: long enough for one refresh, short enough for a retry
+_lookup_cache: tuple[float, dict] = (0.0, {})
 last_blocked_browsers: list[str] = []   # from the latest lookup, for the menu's message
+
+
+def forget_cookie_lookup() -> None:
+    """Make the next detection read the browsers again (the person asked)."""
+    global _lookup_cache
+    _lookup_cache = (0.0, {})
 
 
 def _run_cookie_detection(domain: str, target_cookie: str) -> list[str]:
@@ -716,29 +753,32 @@ def _run_cookie_detection(domain: str, target_cookie: str) -> list[str]:
     Returns a best-first ranked list of candidate cookie strings (one per
     browser that has the target cookie). Empty list if none are found.
     """
-    global last_blocked_browsers
-    last_blocked_browsers = []
+    global last_blocked_browsers, _lookup_cache
+    ts, found = _lookup_cache
+    if time.time() - ts < _LOOKUP_TTL and domain in found:
+        return list(found[domain])
+    lookups = _LOOKUPS if [domain, target_cookie] in _LOOKUPS else [[domain, target_cookie]]
+    last_blocked_browsers, found = [], {}
     try:
         r = subprocess.run(
-            [sys.executable, "-c", _DETECT_SCRIPT, domain, target_cookie],
-            capture_output=True, text=True, timeout=60,
+            [sys.executable, "-c", _DETECT_SCRIPT, json.dumps(lookups)],
+            capture_output=True, text=True, timeout=90,
         )
         try:
             last_blocked_browsers = list(json.loads(r.stderr.strip().splitlines()[-1])["blocked"])
+            err = ""
         except (ValueError, KeyError, IndexError, TypeError):
-            pass
-        data = json.loads(r.stdout.strip()) if r.stdout.strip() else []
-        # stdout is the cookie jar itself: log how many were found, never the values
-        log.debug("cookie-detect rc=%d candidates=%d err=%r", r.returncode,
-                  len(data) if isinstance(data, list) else 1, r.stderr[:200])
-        if data:
-            if isinstance(data, list):
-                return [c for c in data if c]
-            if isinstance(data, str):   # backward-compat with old single result
-                return [data]
+            err = r.stderr[-300:]          # the script died before reporting
+        data = json.loads(r.stdout.strip()) if r.stdout.strip() else {}
+        if isinstance(data, dict):
+            found = {d: [c for c in v if isinstance(c, str) and c] for d, v in data.items()}
+        # stdout is the cookie jars themselves: log counts, never the values
+        log.debug("cookie-detect rc=%d candidates=%s blocked=%s err=%r", r.returncode,
+                  {d: len(v) for d, v in found.items()}, last_blocked_browsers, err)
     except Exception as e:
         log.debug("_run_cookie_detection failed: %s", e)
-    return []
+    _lookup_cache = (time.time(), found)
+    return list(found.get(domain, []))
 
 
 def _claude_cookie_is_valid(cookie_str: str) -> bool:

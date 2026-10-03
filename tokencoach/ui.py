@@ -3171,6 +3171,7 @@ class TokenCoachApp(rumps.App):
                 }
                 detect_fn = _detectors.get(cfg_key)
                 if detect_fn:
+                    _providers.forget_cookie_lookup()
                     ck = detect_fn()
                     if ck:
                         self.config[cfg_key] = ck
@@ -3431,6 +3432,7 @@ class TokenCoachApp(rumps.App):
 
     def _do_auto_detect(self):
         """Background: detect cookies then schedule a fetch."""
+        _providers.forget_cookie_lookup()        # asked for now: don't reuse a lookup from before
         try:
             cookie_str = _auto_detect_cookies()
         except Exception:

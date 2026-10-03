@@ -192,9 +192,12 @@ like its closest published sibling and labelled *estimated*. Override anything i
 - **What is read:** Claude Code transcripts (`~/.claude/projects`), Cowork logs, Codex sessions
   (`~/.codex/sessions`), commit messages, dates and file names (`git log`) of repositories you
   chose to track, and, for the quota bars, your claude.ai / chatgpt.com session cookies
-  from your browser. macOS asks for Keychain access to read them; click **Allow**, not
-  **Always Allow**, which would let any Python script on your Mac read that key unasked.
-  TokenCoach looks once at start and again only when you ask or a session expires. Cookies
+  from your browser. For Chrome-family browsers macOS asks for Keychain access to read them
+  (once per browser per lookup); click **Allow**, not **Always Allow**: the request comes from
+  Apple's `security` tool, so Always Allow lets any program on your Mac read that key unasked.
+  TokenCoach looks once at start and again only when you ask or a session expires, and never
+  asks when macOS's privacy protection keeps it out of the browser's folder (then use
+  **Set Session Cookie…**). Cookies
   are only ever sent to claude.ai / chatgpt.com, and never written to the log.
 - **What leaves, and only when you click:** **Analyze deeper** and **Improve** send a digest of
   your costliest prompts (or the one prompt) to Claude through *your own* `claude` CLI, running

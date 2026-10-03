@@ -383,37 +383,98 @@ class DashboardAccessLog(unittest.TestCase):
 
 
 class CookiesStayOutOfTheLog(unittest.TestCase):
+    def setUp(self):
+        from tokencoach import providers
+        p = patch.object(providers, "_lookup_cache", (0.0, {}))
+        p.start()
+        self.addCleanup(p.stop)
+
     def test_detected_cookie_values_are_not_logged(self):
         from tokencoach import providers
-        jar = '["sessionKey=sk-ant-sid01-SECRETVALUE; lastActiveOrg=org-1"]'
-        done = subprocess.CompletedProcess([], 0, stdout=jar, stderr="")
+        out = '{"claude.ai": ["sessionKey=sk-ant-sid01-SECRETVALUE; lastActiveOrg=org-1"], "chatgpt.com": []}'
+        done = subprocess.CompletedProcess([], 0, stdout=out, stderr='{"blocked": []}')
         with patch.object(providers.subprocess, "run", return_value=done), \
                 self.assertLogs(providers.log, level="DEBUG") as logs:
             self.assertEqual(len(providers._run_cookie_detection("claude.ai", "sessionKey")), 1)
         self.assertNotIn("SECRETVALUE", "\n".join(logs.output))
-        self.assertIn("candidates=1", "\n".join(logs.output))
+        self.assertIn("'claude.ai': 1", "\n".join(logs.output))
 
     def test_browsers_macos_blocks_are_reported(self):
         # Found on the owner's Mac: macOS privacy protection kept the app out of
         # Chrome's folder; the lookup said "nothing found" and nobody knew why.
         from tokencoach import providers
-        done = subprocess.CompletedProcess([], 0, stdout="[]", stderr='{"blocked": ["chrome"]}')
+        done = subprocess.CompletedProcess([], 0, stdout="{}", stderr='{"blocked": ["chrome"]}')
         with patch.object(providers.subprocess, "run", return_value=done):
             self.assertEqual(providers._run_cookie_detection("claude.ai", "sessionKey"), [])
         self.assertEqual(providers.last_blocked_browsers, ["chrome"])
 
-    def test_detect_script_flags_unreadable_cookie_stores(self):
+    def test_claude_and_chatgpt_lookups_share_one_pass(self):
+        # Found on the owner's Mac: four Keychain prompts per refresh, one per
+        # lookup per site. One pass reads both sites.
+        from tokencoach import providers
+        out = '{"claude.ai": ["sessionKey=a"], "chatgpt.com": ["__Secure-next-auth.session-token=b"]}'
+        done = subprocess.CompletedProcess([], 0, stdout=out, stderr='{"blocked": []}')
+        with patch.object(providers.subprocess, "run", return_value=done) as run:
+            providers._run_cookie_detection("claude.ai", "sessionKey")
+            providers._run_cookie_detection("chatgpt.com", "__Secure-next-auth.session-token")
+        self.assertEqual(run.call_count, 1)
+
+    def run_script(self, home, fake_module):
+        """Run the real lookup script against a stand-in browser_cookie3."""
         import sys
         from tokencoach import providers
-        with tempfile.TemporaryDirectory() as d:
-            pathlib.Path(d, "browser_cookie3.py").write_text(
-                "def chrome(domain_name):\n    raise Exception('Unable to read database file')\n"
-                "def safari(domain_name):\n    raise PermissionError(1, 'Operation not permitted')\n"
-                "def firefox(domain_name):\n    raise Exception('Could not find Firefox profile directory')\n")
-            r = subprocess.run([sys.executable, "-c", providers._DETECT_SCRIPT, "claude.ai", "sessionKey"],
-                               capture_output=True, text=True, env={**os.environ, "PYTHONPATH": d})
-        self.assertEqual(r.stdout.strip(), "[]")
-        self.assertEqual(sorted(json.loads(r.stderr)["blocked"]), ["chrome", "safari"])
+        mod = pathlib.Path(home, "mod")
+        mod.mkdir()
+        (mod / "browser_cookie3.py").write_text(fake_module)
+        lookups = json.dumps(providers._LOOKUPS)
+        r = subprocess.run([sys.executable, "-c", providers._DETECT_SCRIPT, lookups], capture_output=True,
+                           text=True, env={**os.environ, "PYTHONPATH": str(mod), "HOME": home})
+        return json.loads(r.stdout), json.loads(r.stderr)["blocked"]
+
+    FAKE = (
+        "import os\n"
+        "def _log(what):\n"
+        "    open(os.path.join(os.environ['HOME'], 'calls'), 'a').write(what + '\\n')\n"
+        "def _get_osx_keychain_password(service, user):\n"
+        "    _log('keychain ' + service)\n"
+        "    return b'pw'\n"
+        "def _chromium(name, domain):\n"
+        "    _get_osx_keychain_password(name + ' Safe Storage', name)\n"
+        "    _log(name + ' ' + domain)\n"
+        "    if name == 'Chrome':\n"
+        "        raise Exception('Unable to read database file')\n"
+        "    return []\n"
+        "def chrome(domain_name): return _chromium('Chrome', domain_name)\n"
+        "def brave(domain_name): return _chromium('Brave', domain_name)\n"
+        "def vivaldi(domain_name): return _chromium('Vivaldi', domain_name)\n"
+        "def edge(domain_name): return _chromium('Edge', domain_name)\n"
+        "def safari(domain_name):\n"
+        "    raise PermissionError(1, 'Operation not permitted')\n"
+        "def firefox(domain_name):\n"
+        "    raise Exception('Could not find Firefox profile directory')\n"
+    )
+
+    def test_no_keychain_prompt_for_missing_or_blocked_browsers(self):
+        with tempfile.TemporaryDirectory() as home:
+            support = pathlib.Path(home, "Library", "Application Support")
+            (support / "Google" / "Chrome").mkdir(parents=True)          # there, DB unreadable
+            (support / "BraveSoftware" / "Brave-Browser").mkdir(parents=True)
+            (support / "Microsoft Edge").mkdir(parents=True)             # there and readable
+            os.chmod(support / "BraveSoftware" / "Brave-Browser", 0)     # macOS keeps us out
+            try:
+                found, blocked = self.run_script(home, self.FAKE)
+            finally:
+                os.chmod(support / "BraveSoftware" / "Brave-Browser", 0o700)
+            calls = pathlib.Path(home, "calls").read_text().splitlines()
+        self.assertEqual(found, {"claude.ai": [], "chatgpt.com": []})
+        self.assertEqual(sorted(blocked), ["brave", "chrome", "safari"])
+        # Vivaldi isn't installed and Brave is blocked: neither asks the Keychain
+        self.assertFalse([c for c in calls if "Vivaldi" in c or "Brave" in c])
+        # one Keychain prompt per browser, however many sites are read
+        self.assertEqual(calls.count("keychain Edge Safe Storage"), 1)
+        self.assertIn("Edge chatgpt.com", calls)
+        # a store that can't be opened isn't tried again for the next site
+        self.assertEqual([c for c in calls if c.startswith("Chrome ")], ["Chrome claude.ai"])
 
     def test_unanswered_keychain_note_does_not_stop_detection(self):
         # Found on the owner's Mac: the note timed out on an idle Mac, the fetch
