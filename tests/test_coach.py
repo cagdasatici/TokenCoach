@@ -259,6 +259,31 @@ class ApplyToFiles(Base):
         coach.unapply_lesson(self.conn, "l2")
         self.assertEqual((self.proj / "CLAUDE.md").read_text(), "# My project\n\nExisting guidance.\n")
 
+    def test_lessons_left_in_the_block_are_kept_and_adopted(self):
+        # Found on the mini (path C): after `uninstall --purge` the block stays,
+        # and the next Apply rewrote it from the new ledger, dropping the old lines.
+        path = self.proj / "CLAUDE.md"
+        self.lesson("gone", 0.97, rule="Removed by the person.")
+        coach.dismiss_lesson(self.conn, "gone")
+        path.write_text("# My project\n\n" + coach.render_block(
+            [("old1", "Keep each session to one task."), ("old2", "List the plan first."),
+             ("gone", "Removed by the person.")]) + "\n")
+        self.lesson("l1", 0.97)
+        coach.apply_lesson(self.conn, "l1")
+        text = path.read_text()
+        for rule in ("Keep each session to one task.", "List the plan first.", "Keep sessions short."):
+            self.assertIn(rule, text)
+        self.assertNotIn("Removed by the person.", text)
+        old1 = dict(self.conn.execute("SELECT * FROM lessons WHERE id = 'old1'").fetchone())
+        self.assertEqual((old1["status"], old1["origin"]), ("applied", "file"))
+        self.assertEqual(json.loads(old1["applied_files"]), [str(path)])
+        # an adopted lesson can be removed from the dashboard and stays removed
+        coach.unapply_lesson(self.conn, "old1")
+        coach.unapply_lesson(self.conn, "l1")
+        text = path.read_text()
+        self.assertNotIn("Keep each session to one task.", text)
+        self.assertIn("List the plan first.", text)
+
     def test_review_needs_confirmation_and_collecting_is_refused(self):
         self.lesson("r", 0.8)
         with self.assertRaises(ValueError):

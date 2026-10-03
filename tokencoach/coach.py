@@ -333,7 +333,55 @@ def write_block(path: str, rules: list[tuple[str, str]]) -> None:
     os.replace(tmp, path)
 
 
+_BLOCK_LINE = re.compile(r"^- (.+?) <!-- ([\w-]+) -->$")
+
+
+def _adopt_block(conn, path: str) -> list[str]:
+    """Take lines already in the file's managed block into the ledger as applied.
+
+    `uninstall --purge` keeps the block but deletes the ledger, so without this
+    the next Apply rewrote the block from the new ledger and silently dropped
+    the older lessons. A lesson the person removed (dismissed) is left out.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return []
+    start, end = text.find(BLOCK_START), text.find(BLOCK_END)
+    if start < 0 or end < start:
+        return []
+    adopted, now = [], time.time()
+    for line in text[start:end].splitlines():
+        m = _BLOCK_LINE.match(line.strip())
+        if not m:
+            continue
+        rule, lid = m.group(1), m.group(2)
+        row = conn.execute("SELECT status, rule, applied_files FROM lessons WHERE id = ?", (lid,)).fetchone()
+        if row and row["status"] == "dismissed":
+            continue
+        files = json.loads(row["applied_files"] or "[]") if row else []
+        if row and row["status"] == "applied" and path in files:
+            continue
+        if row:
+            conn.execute("UPDATE lessons SET status = 'applied', rule = ?, edited = edited OR ?, "
+                         "applied_ts = COALESCE(applied_ts, ?), applied_files = ?, updated = ? WHERE id = ?",
+                         (rule, rule != row["rule"], now, json.dumps(files + [path]), now, lid))
+        else:
+            conn.execute(
+                """INSERT INTO lessons (id, created, updated, origin, scope, tools, title, rule, evidence,
+                       evidence_n, confidence, status, applied_ts, applied_files, edited)
+                   VALUES (?, ?, ?, 'file', 'global', ?, ?, ?, ?, 0, 0, 'applied', ?, ?, 1)""",
+                (lid, now, now, "codex" if path.endswith("AGENTS.md") else "claude",
+                 rule[:60] + ("…" if len(rule) > 60 else ""), rule,
+                 f"Already in {path} when this ledger started (an earlier install); measured from now on.",
+                 now, json.dumps([path])))
+        adopted.append(lid)
+    return adopted
+
+
 def _rules_for_file(conn, path: str) -> list[tuple[str, str]]:
+    _adopt_block(conn, path)
     rows = conn.execute("SELECT id, rule, applied_files FROM lessons WHERE status = 'applied' "
                         "ORDER BY applied_ts").fetchall()
     return [(r["id"], r["rule"]) for r in rows if path in json.loads(r["applied_files"] or "[]")]
