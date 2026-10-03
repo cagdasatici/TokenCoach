@@ -1945,6 +1945,18 @@ class TokenCoachApp(rumps.App):
         self._ledger_status = ""
         self._optimizer_running = False
         self._last_lesson_scan = 0.0
+        # Before the dashboard starts: a copy that hands over to launchd must not
+        # hold the dashboard port while the supervised copy binds it.
+        from tokencoach.legacy import finish_legacy_install
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if not finish_legacy_install(root):
+            if not _login_item_current() and _add_login_item(handoff=True):
+                log.info("login agent written; handing over to the copy launchd started")
+                os._exit(0)
+            if _job_pid() == os.getpid():
+                for pid in _stop_other_copies():
+                    log.info("stopped another copy of this install (pid %d)", pid)
+
         self._dashboard = None
         try:
             from tokencoach.server import DashboardServer, get_token
@@ -1954,18 +1966,6 @@ class TokenCoachApp(rumps.App):
         except Exception:
             log.exception("dashboard listener failed to start; buttons will be read-only")
         self._sync_nudges()
-
-        from tokencoach.legacy import finish_legacy_install
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if not finish_legacy_install(root):
-            if not _login_item_current() and _add_login_item(handoff=True):
-                log.info("login agent written; handing over to the copy launchd started")
-                if self._dashboard is not None:
-                    self._dashboard.stop()
-                os._exit(0)
-            if _job_pid() == os.getpid():
-                for pid in _stop_other_copies():
-                    log.info("stopped another copy of this install (pid %d)", pid)
 
         # Floating panel (premium UI that replaces NSMenu)
         self._panel = _UsagePanel(self)
