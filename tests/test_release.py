@@ -317,3 +317,42 @@ class Cleanup(unittest.TestCase):
             unhook.assert_called_once()
             self.assertIn("bootout", run.call_args[0][0])
             self.assertFalse(plist.exists())
+
+
+class DashboardAccessLog(unittest.TestCase):
+    # Found on the mini (path A): the access log wrote the dashboard URL,
+    # secret included, into the world-readable app log.
+    def test_token_is_not_logged(self):
+        from tokencoach import server
+        handler = object.__new__(server._Handler)
+        with self.assertLogs(server.log, level="DEBUG") as logs:
+            handler.log_message('"%s" %s %s', "GET /?t=s3cr3t-Tok_en&x=1 HTTP/1.1", "200", "-")
+        self.assertNotIn("s3cr3t-Tok_en", logs.output[0])
+        self.assertIn("GET /?t=", logs.output[0])
+        self.assertIn("&x=1", logs.output[0])
+
+
+class DoctorCronRepair(unittest.TestCase):
+    # Found on the mini (path A): run by launchd, `crontab -` failed with
+    # "Operation not permitted" and the doctor still reported it as repaired.
+    def run_cron_check(self, crontab_write_ok):
+        script = (REPO / "tokencoach-doctor.sh").read_text()
+        start = script.index('CRON_LINE=')
+        end = script.index("\nfi\n", script.index('say_failed "cron watchdog missing')) + 4
+        with tempfile.TemporaryDirectory() as d:
+            fake = pathlib.Path(d, "crontab")
+            fake.write_text('#!/bin/bash\n[ "$1" = -l ] && exit 1\ncat >/dev/null\nexit %d\n'
+                            % (0 if crontab_write_ok else 1))
+            fake.chmod(0o755)
+            prelude = ('say_ok() { echo "ok $1"; }; say_fixed() { echo "fixed $1"; }; '
+                       'say_failed() { echo "failed $1"; }; repairing() { true; }; APP_DIR=/x\n')
+            out = subprocess.run(["/bin/bash", "-c", prelude + script[start:end]],
+                                 env={"PATH": d + ":/usr/bin:/bin", "HOME": d},
+                                 capture_output=True, text=True)
+        return out.stdout
+
+    def test_failed_write_is_reported_as_failed(self):
+        self.assertTrue(self.run_cron_check(False).startswith("failed cron watchdog missing"))
+
+    def test_successful_write_is_reported_as_fixed(self):
+        self.assertTrue(self.run_cron_check(True).startswith("fixed cron watchdog installed"))

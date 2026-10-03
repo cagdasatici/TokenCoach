@@ -169,8 +169,12 @@ CRON_LINE="*/2 * * * * /bin/bash $APP_DIR/tokencoach-doctor.sh >> $HOME/Library/
 if crontab -l 2>/dev/null | grep -q "tokencoach-doctor.sh"; then
     say_ok "cron watchdog installed (every 2 min)"
 elif repairing; then
-    ( crontab -l 2>/dev/null | grep -v "tokencoach-doctor.sh"; echo "$CRON_LINE" ) | crontab -
-    say_fixed "cron watchdog installed (every 2 min)"
+    # launchd runs this without permission to edit the crontab on recent macOS
+    if ( crontab -l 2>/dev/null | grep -v "tokencoach-doctor.sh"; echo "$CRON_LINE" ) | crontab - 2>/dev/null; then
+        say_fixed "cron watchdog installed (every 2 min)"
+    else
+        say_failed "cron watchdog missing (crontab not writable from here; the launchd watchdog still runs)"
+    fi
 else
     say_failed "cron watchdog missing"
 fi

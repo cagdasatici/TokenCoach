@@ -1,12 +1,13 @@
 # TokenCoach v1.2.0: release acceptance
 
 Plan: [remaining release work](plans/2026-09-29-remaining-release-work.md), TC3.
-Status: **pre-checks done, paths A–H not run** (waiting for the Mac mini, due about 2026-10-02).
+Status: **acceptance in progress on the Mac mini** (started 2026-10-03).
 
 - **Release candidate:** the commit on `main` that gets tagged `v1.2.0`. Nothing is tagged yet. The code has no version string, so the tag and `Formula/tokencoach.rb` are the version. Fill in the real SHA when the mini session starts: `git rev-parse HEAD`.
 - **Previous version:** `v1.1.0` (formula at v1.1.0, ledger schema 1).
 - **New version:** v1.2.0 (ledger schema 5, yield, quota attribution).
-- **Machine:** Mac mini `<model>`, macOS `<sw_vers>`, fresh account created by the owner.
+- **Machine:** Mac mini `Mac18,5`, macOS 27.0.1 (26A434), Xcode 27.0, Homebrew; account `cagdas` (the owner's fresh mini account, wiped of TokenCoach by path E before A).
+- **Tested revision:** `9a3f5c6` (`git rev-parse HEAD` = `origin/main` on 2026-10-03; the one-line installer fetched this revision).
 
 ## Pre-checks on the owner's Mac (2026-09-29, revision `18a3c14`)
 
@@ -85,13 +86,13 @@ Known limits:
 
 ```
 Path:            E  Uninstall
-Revision:        <sha>            Install method: git | brew
-Machine / macOS:
-Steps run:       bash ~/.tokencoach/uninstall.sh; probes; reinstall; uninstall.sh --purge. Homebrew: tokencoach --cleanup && brew uninstall tokencoach
+Revision:        9a3f5c6          Install method: git (one-line installer)
+Machine / macOS: Mac mini Mac18,5, macOS 27.0.1 (26A434)
+Steps run:       backup of data, logs, ~/.claude/settings.json, ~/.claude/CLAUDE.md, agents; probes; bash ~/.tokencoach/uninstall.sh; probes; reinstall with the one-line installer; --yield-install on a scratch repo; uninstall.sh --purge; probes
 Expected:        no TokenCoach LaunchAgents; hook gone from ~/.claude/settings.json, other settings intact; widget removed; yield repo hooks removed; data kept without --purge, deleted with it; applied lessons stay in the marked block
-Actual:
-Result:          not run
-Known limits:
+Actual:          uninstall.sh exit 0: 3 agents booted out and their plists deleted, doctor crontab line removed, app and widget processes gone, TokenCoachWidget.app and "Restart TokenCoach.app" removed, ~/.tokencoach removed. settings.json diff = only the TokenCoach UserPromptSubmit entry; the other UserPromptSubmit hook (iTerm2 cc-status) and all other keys unchanged; settings.json.tokencoach-backup kept. Data kept: ledger user_version 5, prompts 1160 → 1161, calls 22695 → 22701 (Claude Code was in use), 4 applied + 3 open lessons. ~/.claude/CLAUDE.md byte-identical, lesson block intact. Reinstall: exit 0, one app process, agents loaded, nudge hook restored, data intact. --purge: "Git hook removed from <scratch repo>" (prepare-commit-msg gone), data dir and ~/Library/Logs/TokenCoach deleted, CLAUDE.md still identical.
+Result:          pass (script install); Homebrew part (tokencoach --cleanup && brew uninstall) recorded under B
+Known limits:    the ledger's original yield repo (~/Documents/Projects/investing) no longer exists on the mini, so hook removal was checked on a scratch repo instead
 ```
 
 ```

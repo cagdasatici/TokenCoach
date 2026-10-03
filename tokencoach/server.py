@@ -8,6 +8,7 @@ Host check defeats DNS rebinding). Standard library only.
 """
 
 import json
+import re
 import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -34,7 +35,8 @@ class _Handler(BaseHTTPRequestHandler):
     server_version = "TokenCoach"
 
     def log_message(self, fmt, *args):          # keep the app log quiet
-        log.debug("dashboard: " + fmt, *args)
+        # the page URL carries the secret; the log is less private than the config
+        log.debug("dashboard: %s", re.sub(r"([?&]t=)[^&\s]*", r"\1…", fmt % args))
 
     # -- guards -------------------------------------------------------------
     def _host_ok(self) -> bool:
