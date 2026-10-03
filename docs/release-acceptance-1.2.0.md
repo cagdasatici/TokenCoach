@@ -7,7 +7,8 @@ Status: **acceptance in progress on the Mac mini** (started 2026-10-03).
 - **Previous version:** `v1.1.0` (formula at v1.1.0, ledger schema 1).
 - **New version:** v1.2.0 (ledger schema 5, yield, quota attribution).
 - **Machine:** Mac mini `Mac18,5`, macOS 27.0.1 (26A434), Xcode 27.0, Homebrew; account `cagdas` (the owner's fresh mini account, wiped of TokenCoach by path E before A).
-- **Tested revision:** `9a3f5c6` (`git rev-parse HEAD` = `origin/main` on 2026-10-03; the one-line installer fetched this revision).
+- **Tested revisions:** E, A, F, G on `9a3f5c6`; B and C (brew) on `bb1e5b3`. Since then `f459198` (security audit: signed-only auto-update, hashed requirements, narrower widget sandbox), `b0bd3ed` (lessons left in the block are adopted, not dropped) and `10abd64` (Quit sticks: the doctor leaves a quit app stopped). Release candidate is now `10abd64` or later; re-run A and E quickly on it, since install.sh, the doctor and the widget changed.
+- **Path D plan:** no upstream AIQuotaBar install. The owner doesn't want third-party code on the machine, so the tap was removed; D runs against a simulated pre-rename install (old LaunchAgent labels, `~/Library/Application Support/AIQuotaBar`, `~/.claude_bar_config.json`, watchdog cron line) built from what `install.sh` and `tokencoach/legacy.py` migrate.
 
 ## Pre-checks on the owner's Mac (2026-09-29, revision `18a3c14`)
 
