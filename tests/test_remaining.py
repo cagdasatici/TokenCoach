@@ -55,21 +55,19 @@ class MenubarContrast(unittest.TestCase):
         status = Mock()
         app = SimpleNamespace(_BAR_PROVIDERS={},
                               _nsapp=SimpleNamespace(nsstatusitem=status))
-        TokenCoachApp._set_bar_title(
-            app, [("Claude", 80, ""), ("ChatGPT", 100, "")],
-            states={"Claude": health.WATCH, "ChatGPT": health.CRITICAL})
-        title = status.setAttributedTitle_.call_args.args[0]
-        self.assertIn("20% ●", str(title.string()))
-        self.assertIn("0% ◆", str(title.string()))
-        for number in ("20%", "0%"):
-            offset = str(title.string()).index(number)
-            attrs, _ = title.attributesAtIndex_effectiveRange_(offset, None)
-            self.assertEqual(attrs[NSForegroundColorAttributeName], NSColor.whiteColor())
-        yellow = NSColor.colorWithSRGBRed_green_blue_alpha_(1, 224 / 255, 102 / 255, 1)
-        for value in ("20% ●", "0% ◆"):
-            offset = str(title.string()).index(value) + len(value) - 1
-            attrs, _ = title.attributesAtIndex_effectiveRange_(offset, None)
-            self.assertEqual(attrs[NSForegroundColorAttributeName], yellow)
+        yellow = NSColor.colorWithSRGBRed_green_blue_alpha_(1, 232 / 255, 163 / 255, 1)
+        for state, color in ((health.GOOD, NSColor.whiteColor()),
+                             (health.WATCH, yellow), (health.CRITICAL, yellow)):
+            TokenCoachApp._set_bar_title(
+                app, [("Claude", 80, ""), ("ChatGPT", 100, "")],
+                states={"Claude": state, "ChatGPT": state})
+            title = status.setAttributedTitle_.call_args.args[0]
+            self.assertEqual(str(title.string()), "●  20%   ●  0%")
+            for number in ("20%", "0%"):
+                offset = str(title.string()).index(number)
+                attrs, _ = title.attributesAtIndex_effectiveRange_(offset, None)
+                self.assertEqual(attrs[NSForegroundColorAttributeName], color)
+
 
 
 class MenuRendering(unittest.TestCase):

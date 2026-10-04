@@ -2897,11 +2897,11 @@ class TokenCoachApp(rumps.App):
         """Multi-indicator attributed title with brand logo icons.
 
         provider_segments: list of (provider_name, pct, extra_suffix)
-          e.g. [("Claude", 36, " \u00b7"), ("ChatGPT", 12, "")]
+          e.g. [("Claude", 36, ""), ("ChatGPT", 12, "")]
 
         states: provider_name -> health state. Percentages always use the
-        bright white color; a yellow dot marks watch and a yellow diamond
-        marks critical, keeping the warning separate from the value.
+        bright white color while healthy and soft yellow under quota
+        pressure. Weekly exhaustion remains visible in the expanded menu.
 
         Falls back to colored text symbols if AppKit / icons unavailable.
         """
@@ -2943,14 +2943,12 @@ class TokenCoachApp(rumps.App):
                     seg.addAttribute_value_range_(NSForegroundColorAttributeName, color, (0, len(sym)))
                     s.appendAttributedString_(seg)
 
+                value_color = (_rgb("#FFE8A3")
+                               if states.get(name) in (health.WATCH, health.CRITICAL)
+                               else NSColor.whiteColor())
                 num = NSMutableAttributedString.alloc().initWithString_attributes_(
                     f" {_remaining(pct)}%{suffix}",
-                    {**base, NSForegroundColorAttributeName: NSColor.whiteColor()})
-                marker = {health.WATCH: " ●", health.CRITICAL: " ◆"}.get(states.get(name), "")
-                if marker:
-                    num.appendAttributedString_(
-                        NSAttributedString.alloc().initWithString_attributes_(
-                            marker, {**base, NSForegroundColorAttributeName: _rgb("#FFE066")}))
+                    {**base, NSForegroundColorAttributeName: value_color})
                 s.appendAttributedString_(num)
 
             # -- Claude Code  diamond 3.2k --
@@ -2971,8 +2969,7 @@ class TokenCoachApp(rumps.App):
         for name, pct, suffix in provider_segments:
             cfg = self._BAR_PROVIDERS.get(name, {})
             sym = cfg.get("sym", "\u25cf")
-            marker = {health.WATCH: " ●", health.CRITICAL: " ◆"}.get(states.get(name), "")
-            parts.append(f"{sym} {_remaining(pct)}%{suffix}{marker}")
+            parts.append(f"{sym} {_remaining(pct)}%{suffix}")
         if cc_msgs is not None and cc_msgs > 0:
             parts.append(f"\u25c6 {_fmt_count(cc_msgs)}")
         self.title = "  ".join(parts)
@@ -3006,16 +3003,9 @@ class TokenCoachApp(rumps.App):
             health.windows_from(data, self._provider_data, self._history))
         primary = data.session or data.weekly_all or data.weekly_sonnet
         if primary:
-            weekly_maxed = any(
-                r and r.pct >= CRIT_THRESHOLD
-                for r in [data.weekly_all, data.weekly_sonnet]
-            )
-            extra = " \u00b7" if (weekly_maxed and primary is data.session
-                             and primary.pct < CRIT_THRESHOLD) else ""
-
             # Collect all available segments
             available: dict[str, tuple[str, int, str]] = {}
-            available["Claude"] = ("Claude", primary.pct, extra)
+            available["Claude"] = ("Claude", primary.pct, "")
             for pd in self._provider_data:
                 bar_pct = self._provider_bar_pct(pd)
                 if bar_pct is not None:
