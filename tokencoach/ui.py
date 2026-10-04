@@ -683,7 +683,7 @@ def _mi(title: str) -> rumps.MenuItem:
     return item
 
 
-# Apple system orange / red, as in the dashboard and the menu bar percentage.
+# Apple system orange / red for the dashboard and expanded menu.
 _HEALTH_HEX = {health.WATCH: "#FF9F0A", health.CRITICAL: "#FF3B30"}
 
 
@@ -2899,9 +2899,9 @@ class TokenCoachApp(rumps.App):
         provider_segments: list of (provider_name, pct, extra_suffix)
           e.g. [("Claude", 36, " \u00b7"), ("ChatGPT", 12, "")]
 
-        states: provider_name -> health state. Like the battery icon, the
-        percentage keeps the normal menu bar color while healthy and turns
-        orange (watch) or red (empty) only when it needs attention.
+        states: provider_name -> health state. Percentages always use the
+        system menu bar text color; ! marks watch and !! marks critical so
+        attention does not depend on wallpaper contrast or color vision.
 
         Falls back to colored text symbols if AppKit / icons unavailable.
         """
@@ -2945,11 +2945,10 @@ class TokenCoachApp(rumps.App):
 
                 num = NSMutableAttributedString.alloc().initWithString_attributes_(
                     f" {_remaining(pct)}%{suffix}", base)
-                alert = {health.WATCH: NSColor.systemOrangeColor,
-                         health.CRITICAL: NSColor.systemRedColor}.get(states.get(name))
-                if alert:
-                    num.addAttribute_value_range_(
-                        NSForegroundColorAttributeName, alert(), (1, len(f"{_remaining(pct)}%")))
+                marker = {health.WATCH: " !", health.CRITICAL: " !!"}.get(states.get(name), "")
+                if marker:
+                    num.appendAttributedString_(
+                        NSAttributedString.alloc().initWithString_attributes_(marker, base))
                 s.appendAttributedString_(num)
 
             # -- Claude Code  diamond 3.2k --
@@ -2970,7 +2969,8 @@ class TokenCoachApp(rumps.App):
         for name, pct, suffix in provider_segments:
             cfg = self._BAR_PROVIDERS.get(name, {})
             sym = cfg.get("sym", "\u25cf")
-            parts.append(f"{sym} {_remaining(pct)}%{suffix}")
+            marker = {health.WATCH: " !", health.CRITICAL: " !!"}.get(states.get(name), "")
+            parts.append(f"{sym} {_remaining(pct)}%{suffix}{marker}")
         if cc_msgs is not None and cc_msgs > 0:
             parts.append(f"\u25c6 {_fmt_count(cc_msgs)}")
         self.title = "  ".join(parts)

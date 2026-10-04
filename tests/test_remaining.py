@@ -42,6 +42,31 @@ class RemainingConversion(unittest.TestCase):
         self.assertEqual(_remaining(-20), 100)
 
 
+class MenubarContrast(unittest.TestCase):
+    def test_native_values_keep_system_color_and_show_quota_markers(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from tokencoach.ui import TokenCoachApp
+        from tokencoach import health
+        try:
+            from AppKit import NSForegroundColorAttributeName
+        except ImportError:
+            self.skipTest("Native menubar rendering requires AppKit")
+        status = Mock()
+        app = SimpleNamespace(_BAR_PROVIDERS={},
+                              _nsapp=SimpleNamespace(nsstatusitem=status))
+        TokenCoachApp._set_bar_title(
+            app, [("Claude", 80, ""), ("ChatGPT", 100, "")],
+            states={"Claude": health.WATCH, "ChatGPT": health.CRITICAL})
+        title = status.setAttributedTitle_.call_args.args[0]
+        self.assertIn("20% !", str(title.string()))
+        self.assertIn("0% !!", str(title.string()))
+        for number in ("20%", "0%"):
+            offset = str(title.string()).index(number)
+            attrs, _ = title.attributesAtIndex_effectiveRange_(offset, None)
+            self.assertNotIn(NSForegroundColorAttributeName, attrs)
+
+
 class MenuRendering(unittest.TestCase):
     def _row(self, used):
         from tokencoach.providers import LimitRow
