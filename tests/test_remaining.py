@@ -43,13 +43,13 @@ class RemainingConversion(unittest.TestCase):
 
 
 class MenubarContrast(unittest.TestCase):
-    def test_native_values_keep_system_color_and_show_quota_markers(self):
+    def test_native_values_are_white_and_warnings_are_yellow(self):
         from types import SimpleNamespace
         from unittest.mock import Mock
         from tokencoach.ui import TokenCoachApp
         from tokencoach import health
         try:
-            from AppKit import NSForegroundColorAttributeName
+            from AppKit import NSForegroundColorAttributeName, NSColor
         except ImportError:
             self.skipTest("Native menubar rendering requires AppKit")
         status = Mock()
@@ -59,12 +59,17 @@ class MenubarContrast(unittest.TestCase):
             app, [("Claude", 80, ""), ("ChatGPT", 100, "")],
             states={"Claude": health.WATCH, "ChatGPT": health.CRITICAL})
         title = status.setAttributedTitle_.call_args.args[0]
-        self.assertIn("20% !", str(title.string()))
-        self.assertIn("0% !!", str(title.string()))
+        self.assertIn("20% ●", str(title.string()))
+        self.assertIn("0% ◆", str(title.string()))
         for number in ("20%", "0%"):
             offset = str(title.string()).index(number)
             attrs, _ = title.attributesAtIndex_effectiveRange_(offset, None)
-            self.assertNotIn(NSForegroundColorAttributeName, attrs)
+            self.assertEqual(attrs[NSForegroundColorAttributeName], NSColor.whiteColor())
+        yellow = NSColor.colorWithSRGBRed_green_blue_alpha_(1, 224 / 255, 102 / 255, 1)
+        for value in ("20% ●", "0% ◆"):
+            offset = str(title.string()).index(value) + len(value) - 1
+            attrs, _ = title.attributesAtIndex_effectiveRange_(offset, None)
+            self.assertEqual(attrs[NSForegroundColorAttributeName], yellow)
 
 
 class MenuRendering(unittest.TestCase):

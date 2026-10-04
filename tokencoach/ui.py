@@ -2900,8 +2900,8 @@ class TokenCoachApp(rumps.App):
           e.g. [("Claude", 36, " \u00b7"), ("ChatGPT", 12, "")]
 
         states: provider_name -> health state. Percentages always use the
-        system menu bar text color; ! marks watch and !! marks critical so
-        attention does not depend on wallpaper contrast or color vision.
+        bright white color; a yellow dot marks watch and a yellow diamond
+        marks critical, keeping the warning separate from the value.
 
         Falls back to colored text symbols if AppKit / icons unavailable.
         """
@@ -2944,11 +2944,13 @@ class TokenCoachApp(rumps.App):
                     s.appendAttributedString_(seg)
 
                 num = NSMutableAttributedString.alloc().initWithString_attributes_(
-                    f" {_remaining(pct)}%{suffix}", base)
-                marker = {health.WATCH: " !", health.CRITICAL: " !!"}.get(states.get(name), "")
+                    f" {_remaining(pct)}%{suffix}",
+                    {**base, NSForegroundColorAttributeName: NSColor.whiteColor()})
+                marker = {health.WATCH: " ●", health.CRITICAL: " ◆"}.get(states.get(name), "")
                 if marker:
                     num.appendAttributedString_(
-                        NSAttributedString.alloc().initWithString_attributes_(marker, base))
+                        NSAttributedString.alloc().initWithString_attributes_(
+                            marker, {**base, NSForegroundColorAttributeName: _rgb("#FFE066")}))
                 s.appendAttributedString_(num)
 
             # -- Claude Code  diamond 3.2k --
@@ -2969,7 +2971,7 @@ class TokenCoachApp(rumps.App):
         for name, pct, suffix in provider_segments:
             cfg = self._BAR_PROVIDERS.get(name, {})
             sym = cfg.get("sym", "\u25cf")
-            marker = {health.WATCH: " !", health.CRITICAL: " !!"}.get(states.get(name), "")
+            marker = {health.WATCH: " ●", health.CRITICAL: " ◆"}.get(states.get(name), "")
             parts.append(f"{sym} {_remaining(pct)}%{suffix}{marker}")
         if cc_msgs is not None and cc_msgs > 0:
             parts.append(f"\u25c6 {_fmt_count(cc_msgs)}")
