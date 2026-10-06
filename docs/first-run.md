@@ -1,15 +1,12 @@
 # First run: install to first result
 
 This guide describes the current `main` channel. Homebrew currently ships v1.1.0;
-yield tracking and other later features require `main`. The DMG build is implemented; its signed/notarized release and clean-Mac acceptance are pending. See [installation options and requirements](../README.md#install).
+yield tracking and other later features require `main`. The DMG is deferred; Homebrew is the primary stable route. See [installation options and requirements](../README.md#install).
 
 ## 1. Install and launch
 
-The upcoming DMG is the primary packaged path: download the image for your Mac,
-drag TokenCoach to Applications, eject the image, and open the app. It bundles Python
-and core dependencies, excludes the widget, and targets macOS 14+ pending acceptance.
-Enable Launch at Login in Settings if wanted. See [the distribution guide](macos-distribution.md).
-No public DMG is available yet; use the script or Homebrew commands in the README. The script launches TokenCoach;
+Use the Homebrew commands in the README for the stable release, or the script
+for moving `main`. The script launches TokenCoach;
 Homebrew needs `tokencoach &` after installation. The core app requires macOS 12+
 and Python 3.10+. The optional widget needs macOS 14+ and Xcode and is not needed to
 use the dashboard. Look for ◆ in the menu bar, then click it.

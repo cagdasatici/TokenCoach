@@ -1,5 +1,7 @@
 # TokenCoach
 
+<img src="assets/tokencoach-logo.png" alt="TokenCoach ribbon diamond logo" width="112" height="112">
+
 **See the API-equivalent cost of your Claude and ChatGPT prompts, and get coaching
 on costly habits.** A macOS menu bar app for people who live in Claude Code and Codex.
 
@@ -142,25 +144,9 @@ period with an earlier one measured the same way, not with an absolute target.
 
 The documentation below describes the `main` development channel. The Homebrew
 formula currently ships **v1.1.0**; features added after that release, including yield
-tracking, require `main` until v1.2.0 is accepted and published. A signed, notarized
-DMG build is implemented, but signing and clean-Mac acceptance are pending; no public DMG is available.
-
-**DMG — primary path for the upcoming packaged release (pending):** download the
-image for Apple Silicon or Intel, drag TokenCoach to Applications, eject the image,
-and open the app. The package includes Python and core dependencies; the optional
-widget is excluded. macOS 14+ is the release target, pending validation on both CPUs.
-Use Settings → Launch at Login if wanted. See [DMG installation, upgrades and removal](docs/macos-distribution.md).
-Until a signed/notarized image passes acceptance and is published, use an alternative below.
-
-**Script install — moving `main` channel** (also sets up start-at-login and the optional desktop widget):
-```bash
-curl -fsSL https://raw.githubusercontent.com/cagdasatici/TokenCoach/main/install.sh | bash
-```
-
-The script follows `main`, which can include changes before a stable release. It
-automatically updates a clean `main` checkout only to commits signed by a key
-trusted by the installed copy. Local tracked edits or a different branch stop
-auto-update.
+tracking, require `main` until v1.2.0 is accepted and published. Homebrew is the
+primary distribution route. The packaged DMG is deferred; no Apple Developer
+membership is required for the Homebrew or script installation.
 
 **Homebrew — stable release:**
 ```bash
@@ -173,6 +159,16 @@ Homebrew updates through `brew update && brew upgrade tokencoach`; the app does
 not run its git updater for Homebrew installations. This currently installs v1.1.0.
 When v1.2.0 is published, run `tokencoach &` once after upgrading from v1.1.0 so
 it can repair the login item that points at the removed version folder.
+
+**Script install — moving `main` channel** (also sets up start-at-login and the optional desktop widget):
+```bash
+curl -fsSL https://raw.githubusercontent.com/cagdasatici/TokenCoach/main/install.sh | bash
+```
+
+The script follows `main`, which can include changes before a stable release. It
+automatically updates a clean `main` checkout only to commits signed by a key
+trusted by the installed copy. Local tracked edits or a different branch stop
+auto-update.
 
 Release preparation and acceptance gates are recorded in
 [the v1.2.0 publication procedure](docs/release-publication-1.2.0.md).

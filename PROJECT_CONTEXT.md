@@ -43,6 +43,8 @@ A navigation snapshot, not a replacement for requirements or live evidence. Upda
 
 ## Notes
 
+- 2026-10-06 branding: original mint/ivory ribbon-diamond artwork in `assets/tokencoach-logo.png`, small dashboard variant and matching GitHub social card. GitHub repository social preview uploaded and verified after reload; README, self-contained dashboard header/favicon and future packaged app icon use the shared art. Full suite: 312 tests pass (existing non-failing log warning); diff whitespace check passes. Branding and the Homebrew-first release scope are included in the next signed commit.
+
 - 2026-10-05 PS2 widget defect: old extension survived bundle replacement and served stale values despite a correct cache. Owner confirmed recovery after targeted extension retirement and host restart. Builder now retires only the installed extension before host reload; executable regression coverage added in `tests/test_release.py`. Fixed widget build succeeds; final candidate and ongoing refresh acceptance remain open.
 
 - 2026-10-03: security audit (report in `.gstack/security-reports/`, local only). Fixed: signed-commit auto-update + hash-pinned deps; no cookie values or account replies in the log, log folder owner-only; Keychain asks for "Allow" and detection runs once per start; Analyze lessons capped at review and Apply-all shows the rules; widget sandbox narrowed to `widget/usage.json` (older widgets keep getting the old file until rebuilt); saved cookie / API keys never pre-filled into osascript; settings backup owner-only.

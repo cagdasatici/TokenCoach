@@ -1,5 +1,8 @@
 # macOS DMG distribution
 
+Deferred by owner on 2026-10-06 in favor of Homebrew. This document preserves the
+future packaging procedure; PS8/path I no longer gates v1.2.0.
+
 Implementation added 2026-10-05. **No signed, notarized public DMG exists yet.**
 The local development image is a test artifact. PS8 acceptance remains open.
 

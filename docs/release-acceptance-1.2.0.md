@@ -37,7 +37,7 @@ Installer source was a local bare clone of this repository whose `main` points a
 
 | Path | Steps and observations | Result / limitations |
 |---|---|---|
-| A, recheck | Stop the original brew app with `tokencoach --cleanup`; park original data; `TOKENCOACH_REPO=/private/tmp/tokencoach-ps2-candidate.git bash install.sh`. Exit 0, self-check and widget build succeed. App, doctor and widgethost agents present; app and widgethost have RunAtLoad and KeepAlive; one script app process. Cron watchdog confirmed installed. Dashboard GET with `?t=<private token>` returns 200, missing token and foreign Host return 403. Config mode 0600, ledger schema 5; instruction files unchanged. `tokencoach-doctor.sh --check`: 12 ok, one failure for absent usage cache, icon check inconclusive. | Partial: menu click, visible icon and actual logout/login unobserved. Existing session logs remain available for indexing; this is a fresh TokenCoach data/install check, not a brand-new macOS user. Installer paused in crontab before eventually completing; the later cron probe passed. |
+| A, recheck | Stop the original brew app with `tokencoach --cleanup`; park original data; `TOKENCOACH_REPO=/private/tmp/tokencoach-ps2-candidate.git bash install.sh`. Exit 0, self-check and widget build succeed. App, doctor and widgethost agents present; app and widgethost have RunAtLoad and KeepAlive; one script app process. Cron watchdog confirmed installed. Dashboard GET with `?t=<private token>` returns 200, missing token and foreign Host return 403. Config mode 0600, ledger schema 5; instruction files unchanged. `tokencoach-doctor.sh --check`: 12 ok, one failure for absent usage cache, icon check inconclusive. | Menu/dashboard subsequently owner-confirmed; logout/login owner-waived on 2026-10-06 (not run). Existing session logs remain available for indexing; this is a fresh TokenCoach data/install check, not a brand-new macOS user. Installer paused in crontab before eventually completing; the later cron probe passed. |
 | D, simulation | After non-purge uninstall, park fresh test data. Create synthetic old support directory with `migration-marker.txt`, old config (`refresh_interval=60`, `seen_welcome=true`, `nudges_enabled=false`), old history (`claude: [[1791158400,12]]`), empty old install directory, three old-label agents running `/usr/bin/true`, and a harmless cron fixture containing the old watchdog name. Run the same candidate installer. Marker, refresh setting and exact history survive; old config/history files, support directory, install directory, agent files and cron line are removed. Launchctl lists only new agents; one candidate app process. | Probe pass; visible duplicate-menu check pending. Synthetic fixture contains no old ledger or widget binary; prior unit checks cover ledger/data moves, but this run does not establish legacy ledger upgrade or old widget process shutdown. |
 | E, non-purge | Install a yield hook in a disposable git repo with `tokencoach.py --yield-install`; run `bash ~/.tokencoach/uninstall.sh`. Exit 0. App agents, script install, widget and disposable yield hook removed. Data retained; prompts/calls/lessons counts do not decrease; non-hook settings preserved. | Pass for these probes. Earlier record remains the evidence for preservation of other hook entries. |
 | E, purge | After D, `bash ~/.tokencoach/uninstall.sh --purge`. Exit 0; synthetic test data and logs, script install, agents and widget removed. Original data remained parked outside the purge paths. | Pass; only test data purged. |
@@ -48,7 +48,7 @@ Restoration: original data directory moved back, original logs/settings/login pl
 
 Probe correction: the first dashboard request incorrectly used `?token=` and returned 403. That request's accidentally unredacted token was removed from the test log; the correct `?t=` probe produced the results above. No credential values are recorded here.
 
-**Still required:** C git auto-update/data preservation/restart; actual A logout/login and menu opening; D visible duplicate check and remaining fixture coverage; G display/refresh/relaunch; all H transitions; review or repeat B/C (brew) and F against the final revision. PS2 is not signed off.
+**Still required (updated 2026-10-06):** C dependency installation and visible restart after git upgrade; D visible duplicate check and remaining fixture coverage; G refresh after a quota change; H transitions; review or repeat B/C (brew) and F against the final revision. Candidate menu/dashboard and fixed widget display/host recovery are confirmed below. A logout/login is closed by owner waiver. PS2 is not signed off.
 
 ### Owner observations after restoration — 2026-10-05
 
@@ -74,7 +74,7 @@ Visible checks and refresh timing are pending.
 
 Owner then confirms candidate `db47d43` has correct menu percentages, checked
 against Codex and Claude, and that **Open dashboard** works. A's visible/menu
-checks pass; actual logout/login is still pending. G currently fails display
+checks pass; logout/login was later owner-waived on 2026-10-06. G currently fails display
 freshness: owner reports OpenAI remaining 43% / 83% in the menu versus
 53% / 85% in the widget (session / weekly). The widget cache contains the
 correct 43% / 83%. A widget extension process from before the candidate
@@ -106,13 +106,36 @@ Widget host recovery on the fixed build: send SIGTERM using
 `launchctl kill SIGTERM gui/<uid>/io.github.cagdasatici.tokencoach.widgethost`;
 a new PID returns in 1.1 seconds, with exactly one host process. G display and
 host recovery now pass for this overlay; automatic refresh after a subsequent
-quota change remains pending. A's actual logout/login also remains pending.
+quota change remains pending. A's actual logout/login was later owner-waived as recorded below.
 
 **Owner waiver — 2026-10-06:** the owner cannot log out and instructs us to
 close that item and move on. Logout/login is closed by explicit owner waiver,
 not an executed passing check. Earlier launch-agent configuration and visible
 menu/dashboard observations remain the evidence; actual login recovery is
 unverified. Do not list logout/login as awaiting further owner action.
+
+### C git-upgrade probes — 2026-10-06
+
+Scratch-only fixture, real git operations, no running-app changes. Clone the
+local candidate bare repository, keep branch `main`, reset the scratch install
+to `v1.1.0`, and use that revision's `demo.prepare` with `TOKENCOACH_DEMO=1`
+and a scratch `TOKENCOACH_DATA_DIR`. Execute that installed revision's
+`_check_and_apply_update()`; it returns true and fast-forwards to
+`db47d43e221bbc2ae4a1f236d4c2c4143cae90da`. Open the ledger in a fresh process
+using the upgraded code.
+
+Observed: schema 1 → 5; prompts 883 → 883; calls 10,499 → 10,499;
+lessons 3 → 3; applied lesson IDs unchanged; every synthetic instruction file
+and config.json checksum unchanged. The fixture lives outside the repository.
+Then reset the scratch install to `10abd64` (with its installed trust file)
+and execute its signed updater; it returns true and reaches the same target.
+
+Result: data-preservation and git fast-forward probes pass. v1.1.0's updater
+predates signature enforcement; signature enforcement was exercised by the
+second hop. No install-local venv existed, so the updater's pip step was
+skipped; the checks used the workspace interpreter. App restart, menu visibility
+after an upgrade, and dependency installation remain unverified. This is a
+partial C result, not full live upgrade acceptance.
 
 ## Building the v1.2.0 tarball locally (paths B and C, brew)
 
@@ -229,6 +252,11 @@ Known limits:
 Add a regression test in `tests/test_release.py` for any failure found.
 
 ## Path I — DMG distribution (PS8)
+
+Owner decision — 2026-10-06: DMG distribution is deferred in favor of Homebrew.
+Path I is retained for a future packaged release and is not a v1.2.0 acceptance gate.
+No signing or clean-Mac acceptance is claimed.
+
 
 Implementation record — 2026-10-05; **partial, not release acceptance**.
 Working tree based on `db47d43e221bbc2ae4a1f236d4c2c4143cae90da` with prior changes

@@ -2,7 +2,7 @@
 
 Prepared 2026-10-05 for the v1.2.0 sharing draft. This shows development-channel
 features; Homebrew v1.1.0 does not include all of them. Release acceptance and the
-signed, notarized DMG are still pending.
+Homebrew release are still pending.
 
 **Sample data throughout.** All prompts, projects, quota readings, costs and
 before/after changes below are synthetic. They illustrate the interface, not results
@@ -45,7 +45,7 @@ own CLI only when you click them. Quota endpoints can change or become unavailab
 [Choose an installation route or run the sample-data demo](https://github.com/cagdasatici/TokenCoach#install).
 Current source routes require macOS 12+ and Python 3.10+; the optional widget needs
 macOS 14+ and Xcode. The installation page distinguishes stable Homebrew v1.1.0
-from moving signed `main`; a DMG is planned, not available yet.
+from moving signed `main`; the DMG is deferred.
 
 Built on AIQuotaBar by Toprak Yagcioglu. TokenCoach is not affiliated with or endorsed
 by Anthropic or OpenAI.

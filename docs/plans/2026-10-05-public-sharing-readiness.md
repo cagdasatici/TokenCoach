@@ -55,7 +55,7 @@ configured CI Python jobs pass on the candidate. Record the SHA and run URL.
 ### PS2 — Finish release acceptance on the candidate
 
 - [x] Select and record the exact application candidate SHA: `db47d43e221bbc2ae4a1f236d4c2c4143cae90da` (signed). Uncommitted documentation/test changes still need a final release revision and applicability review.
-- [ ] Finish path A's visible menu, dashboard opening, and logout/login checks.
+- [x] Path A menu and dashboard observed on the candidate; logout/login closed by explicit owner waiver on 2026-10-06 (not run).
 - [ ] Finish path C's git auto-update check, including data preservation, the visible
   menu icon, and exactly one running process.
 - [ ] Execute path D using the simulated pre-rename installation already agreed in
@@ -81,8 +81,8 @@ applicability review are not complete.
 
 ### PS3 — Align the release and installation routes
 
-- [ ] After PS1, PS2, and PS8 acceptance pass, publish v1.2.0 from the tested revision
-  with its `git archive` tarball, signed/notarized DMG, checksums, and release notes
+- [ ] After PS1 and PS2 acceptance pass, publish v1.2.0 from the tested revision
+  with its `git archive` tarball, checksum, and release notes
   covering changes, upgrade steps, and limitations.
 - [ ] Update the Homebrew formula to the published archive URL and matching SHA-256.
 - [x] Clearly distinguish stable Homebrew releases from the script installer's
@@ -96,9 +96,9 @@ release/tag/assets; `install.sh` only if the chosen distribution behavior change
 **2026-10-05 preparation:** README now labels stable Homebrew v1.1.0 and moving
 `main`, explains each update route, and identifies v1.2.0/DMG as pending.
 [Publication procedure and draft notes](../release-publication-1.2.0.md) cover
-candidate identity, archive creation, accepted DMG/checksums, formula alignment,
+candidate identity, archive creation/checksum, formula alignment,
 and published-route verification. Formula and publication remain gated by PS1,
-PS2 and PS8; PS3 is not complete.
+PS2; PS3 is not complete. PS8 was deferred by the owner on 2026-10-06.
 
 **Acceptance:** release tag, archive contents, checksum, formula, and advertised
 features agree. Fresh installation and upgrade through the published routes are
@@ -128,8 +128,12 @@ numbers are estimates. No unsupported privacy or savings guarantees remain.
 
 ### PS8 — Ship an easy-install macOS DMG
 
-Status: **implementation added 2026-10-05; signing and distribution acceptance pending**. The numbering preserves
-existing PS1–PS7 references. The DMG becomes the primary installation path for ordinary
+Status: **deferred by owner on 2026-10-06**. Homebrew is the primary v1.2.0
+route; Developer ID membership/signing and path I acceptance are not release gates.
+The implementation below is retained for a future packaged release. It must still
+pass signing and acceptance before any DMG is advertised or published.
+
+The numbering preserves existing PS1–PS7 references. A future DMG would become the primary installation path for ordinary
 Mac users; script and Homebrew installations remain supported alternatives.
 
 - [ ] Produce a versioned `TokenCoach-X.Y.Z.dmg` containing `TokenCoach.app` and an
@@ -304,10 +308,10 @@ that finding before expanding implementation scope.
 
 ## Release gates and order
 
-1. Resolve PS1 and PS4; implement PS8 and prepare PS5–PS7 and PS9 alongside acceptance work.
-2. Complete PS2 and PS8 against the candidate, resolving any real defects they expose.
-3. Complete PS3 only after candidate acceptance, including the DMG; check the public artifacts and install routes.
-4. Before broad promotion, confirm PS1–PS4 and PS8 are complete, outside first-run validation
+1. Resolve PS1 and PS4; prepare PS5–PS7 and PS9 alongside acceptance work. PS8 is deferred.
+2. Complete PS2 against the candidate, resolving any real defects they expose.
+3. Complete PS3 only after candidate acceptance, through Homebrew and the script installer; check the public artifacts and install routes.
+4. Before broad promotion, confirm PS1–PS4 are complete, outside first-run validation
    has succeeded, and support instructions and sharing material are ready.
 
 For each item, replace its open status with dated evidence: revision, test/run link or

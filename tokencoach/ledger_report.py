@@ -9,6 +9,7 @@ Advanced switch reveals filters, quota, activity, breakdowns, sessions and the
 full prompt list.
 """
 
+import base64
 import glob
 import html
 import json
@@ -77,6 +78,7 @@ DASHBOARD_CSS = """
 .top { position:sticky; top:0; z-index:10; background:color-mix(in srgb, var(--surface-0) 84%, transparent);
   -webkit-backdrop-filter:saturate(180%) blur(20px); backdrop-filter:saturate(180%) blur(20px); }
 .top .in { max-width:1000px; margin:0 auto; padding:12px 16px; display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap; }
+.brand-logo { width:32px; height:32px; object-fit:contain; }
 .brand { display:flex; align-items:center; gap:9px; }
 .mini { width:10px; height:10px; border-radius:50%; background:var(--state, var(--text-muted));
   box-shadow:0 0 0 3px color-mix(in srgb, var(--state, var(--text-muted)) 22%, transparent); }
@@ -995,10 +997,10 @@ if (D.live) {
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TokenCoach</title><style>{css}{dcss}</style></head>
+<title>TokenCoach</title><link rel="icon" type="image/png" href="{logo}"><style>{css}{dcss}</style></head>
 <body>
 <div class="top"><div class="in">
-  <div class="brand"><span class="mini" aria-hidden="true"></span><h1>TokenCoach</h1><span class="pill" id="updated"></span></div>
+  <div class="brand"><img class="brand-logo" src="{logo}" alt=""><span class="mini" aria-hidden="true"></span><h1>TokenCoach</h1><span class="pill" id="updated"></span></div>
   <span class="spacer"></span>
   <span class="ctl"><span class="ctl-label">Tools</span><span class="seg" id="group" aria-label="Tools"></span></span>
   <span class="ctl"><span class="ctl-label">Period</span><span class="seg" id="range" aria-label="Period"></span></span>
@@ -1202,7 +1204,13 @@ def build_report(conn, config: dict | None = None, days: int = DASHBOARD_DAYS,
                     "\"ledger_model_equivalents\" or set exact prices with \"ledger_prices\" in "
                     "~/Library/Application Support/TokenCoach/config.json.")
     blob = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
+    # Embed local artwork so exported dashboards stay self-contained and private.
+    logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                             "assets", "tokencoach-logo-small.png")
+    with open(logo_path, "rb") as logo_file:
+        logo = "data:image/png;base64," + base64.b64encode(logo_file.read()).decode("ascii")
     return PAGE.format(
+        logo=logo,
         css=CSS, dcss=DASHBOARD_CSS, js=DASHBOARD_JS, data=blob,
         chat=" · chat imports" if data["has_chat"] else "",
         advice=data["advice_html"], unpriced=html.escape(unpriced),
