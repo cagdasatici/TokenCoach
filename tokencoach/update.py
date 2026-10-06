@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 from tokencoach.config import LAUNCH_AGENT_LABEL, log
 
@@ -59,16 +60,27 @@ def _check_and_apply_update(install_dir: str | None = None) -> bool:
         if not _signed_by_trusted_key(run, install_dir, remote):
             log.warning("auto-update skipped: %s is not signed by a key in %s", remote[:8], SIGNERS_FILE)
             return False
+        # Install the verified candidate's dependencies before moving HEAD. On
+        # failure the next refresh can retry, instead of restarting incomplete code.
+        venv_pip = os.path.join(install_dir, ".venv", "bin", "pip")
+        if os.path.exists(venv_pip):
+            requirements = run(["git", "show", f"{remote}:requirements.txt"])
+            if requirements.returncode != 0:
+                log.warning("auto-update skipped: candidate requirements unavailable")
+                return False
+            with tempfile.TemporaryDirectory(prefix="tokencoach-update-") as stage:
+                path = os.path.join(stage, "requirements.txt")
+                with open(path, "w") as f:
+                    f.write(requirements.stdout)
+                installed = run([venv_pip, "install", "--quiet", "--require-hashes", "-r", path])
+                if installed.returncode != 0:
+                    log.warning("auto-update skipped: dependency installation failed; will retry")
+                    return False
         # Merge the commit that was verified, not whatever origin/main names by now.
         r = run(["git", "merge", "--ff-only", "--quiet", remote])
         if r.returncode != 0:
             log.warning("auto-update merge failed: %s", r.stderr)
             return False
-        venv_pip = os.path.join(install_dir, ".venv", "bin", "pip")
-        if os.path.exists(venv_pip):
-            # requirements.txt carries hashes, so pip refuses any file that differs.
-            run([venv_pip, "install", "--quiet", "--require-hashes", "-r",
-                 os.path.join(install_dir, "requirements.txt")])
         log.info("auto-update applied: %s → %s", local[:8], remote[:8])
         return True
     except Exception:

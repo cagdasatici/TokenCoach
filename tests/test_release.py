@@ -319,6 +319,39 @@ class AutoUpdate(unittest.TestCase):
         self.assertFalse(_check_and_apply_update(str(self.clone)))
         self.assertEqual((self.clone / "a.txt").read_text(), "1\n")
 
+    def test_dependency_failure_keeps_revision_and_can_retry(self):
+        from tokencoach.update import _check_and_apply_update
+        requirements = "# verified candidate requirements\n"
+        (self.origin / "requirements.txt").write_text(requirements)
+        self.git(self.origin, "add", "requirements.txt")
+        self.signed_commit(self.trusted, "two")
+        pip = self.clone / ".venv" / "bin" / "pip"
+        pip.parent.mkdir(parents=True)
+        pip.write_text("#!/bin/sh\nexit 1\n")
+        pip.chmod(0o700)
+        before = self.git(self.clone, "rev-parse", "HEAD")
+        self.assertFalse(_check_and_apply_update(str(self.clone)))
+        self.assertEqual(self.git(self.clone, "rev-parse", "HEAD"), before)
+        self.assertEqual((self.clone / "a.txt").read_text(), "1\n")
+        # The retry must pass hash enforcement and use the candidate's file,
+        # although requirements.txt does not yet exist in the installed tree.
+        pip.write_text("#!/bin/sh\n"
+                       '[ "$1 $2 $3 $4" = "install --quiet --require-hashes -r" ] || exit 2\n'
+                       f'cmp "$5" "{self.origin / "requirements.txt"}" || exit 3\n'
+                       "exit 0\n")
+        self.assertTrue(_check_and_apply_update(str(self.clone)))
+        self.assertEqual((self.clone / "a.txt").read_text(), "2\n")
+
+    def test_missing_candidate_requirements_keeps_revision(self):
+        from tokencoach.update import _check_and_apply_update
+        self.signed_commit(self.trusted, "two")
+        pip = self.clone / ".venv" / "bin" / "pip"
+        pip.parent.mkdir(parents=True)
+        pip.write_text("#!/bin/sh\nexit 0\n")
+        pip.chmod(0o700)
+        self.assertFalse(_check_and_apply_update(str(self.clone)))
+        self.assertEqual((self.clone / "a.txt").read_text(), "1\n")
+
     def test_a_push_cannot_trust_its_own_key(self):
         """The signer list comes from the installed copy, not from the update."""
         from tokencoach.update import _check_and_apply_update
