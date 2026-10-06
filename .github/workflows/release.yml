@@ -1,0 +1,42 @@
+name: Build signed DMG candidate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dmg:
+    # Maintainer-owned, isolated runners with Developer ID and a notarytool
+    # Keychain profile provisioned out of band. No credentials enter checkout.
+    environment: macos-release
+    strategy:
+      matrix:
+        include:
+          - arch: arm64
+            runner: ARM64
+          - arch: x86_64
+            runner: X64
+    runs-on: [self-hosted, macOS, tokencoach-signing, '${{ matrix.runner }}']
+    env:
+      TOKENCOACH_BUILD_PYTHON: ${{ vars.BUILD_PYTHON }}
+      TOKENCOACH_ARCH: ${{ matrix.arch }}
+      TOKENCOACH_SIGN_IDENTITY: ${{ vars.DEVELOPER_ID_APPLICATION }}
+      TOKENCOACH_NOTARY_PROFILE: ${{ vars.NOTARY_KEYCHAIN_PROFILE }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure candidate signature verification
+        run: git config gpg.ssh.allowedSignersFile "$PWD/allowed_signers"
+      - name: Check prepared build environment
+        run: |
+          test -x "$TOKENCOACH_BUILD_PYTHON"
+          "$TOKENCOACH_BUILD_PYTHON" -m pip check
+          "$TOKENCOACH_BUILD_PYTHON" -m unittest discover -s tests
+      - name: Build and notarize candidate (no publication)
+        run: scripts/build-dmg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TokenCoach-${{ matrix.arch }}-candidate
+          path: |
+            dist/*.dmg
+            dist/*.sha256
+            dist/*.build.txt
+            dist/*.dependencies.txt

@@ -123,7 +123,9 @@ class Packaging(unittest.TestCase):
     def test_no_prerename_names_outside_migration_code(self):
         allowed = {"install.sh", "claude_bar.py", "tokencoach/legacy.py", "tokencoach/config.py",
                    "tokencoach/ledger.py", "tests/test_release.py", "AGENTS.md", "README.md", "LICENSE",
-                   "tokencoach/ui.py", "docs/plans/2026-09-29-remaining-release-work.md"}
+                   "tokencoach/ui.py", "docs/plans/2026-09-29-remaining-release-work.md",
+                   # Historical paths and launch-agent names are acceptance evidence.
+                   "docs/release-acceptance-1.2.0.md"}
         files = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
         offenders = []
         for f in files:
@@ -158,6 +160,51 @@ class Packaging(unittest.TestCase):
         # ...and pinned by hash, so a swapped file on PyPI fails the install
         unhashed = [l.split()[0] for l in reqs if "--hash=sha256:" not in l]
         self.assertEqual(unhashed, [])
+
+
+class WidgetReplacement(unittest.TestCase):
+    def test_retires_only_installed_extension_before_host_reload(self):
+        # Execute the actual builder with fake system commands: no Xcode,
+        # signals, /Applications writes, or LaunchServices changes in this test.
+        script = REPO / "widget" / "build_widget.sh"
+        installed = "/Applications/TokenCoachWidget.app"
+        extension = "/Contents/PlugIns/TokenCoachWidgetExtension.appex/Contents/MacOS/TokenCoachWidgetExtension"
+        with tempfile.TemporaryDirectory() as d:
+            trace = pathlib.Path(d) / "trace"
+            builder = pathlib.Path(d) / "build_widget.sh"
+            builder.write_text(script.read_text().replace(
+                "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+                "/usr/bin/true"))
+            (pathlib.Path(d) / "TokenCoachWidget.xcodeproj").mkdir()
+            harness = r'''
+xcodebuild() { echo 'Xcode 27.0'; }
+codesign() { return 0; }
+find() { echo '/tmp/fake-build/TokenCoachWidget.app'; }
+rm() { return 0; }
+ditto() { echo installed >> "$TRACE"; }
+ps() { printf '%s\n' "$PROCESSES"; }
+kill() { echo "kill:$1" >> "$TRACE"; }
+launchctl() {
+    if [ "$1" = print ]; then return 0; fi
+    echo "host:$1" >> "$TRACE"
+}
+sleep() { return 0; }
+export -f xcodebuild codesign find rm ditto ps kill launchctl sleep
+bash "$BUILDER"
+'''
+            processes = "\n".join([
+                "412 " + installed + extension,
+                "413 " + installed + "/Contents/MacOS/TokenCoachWidget",
+                "414 /tmp/fake-build/TokenCoachWidget.app" + extension,
+                "415 " + installed + extension + "Other",
+            ])
+            env = {**os.environ, "TRACE": str(trace), "BUILDER": str(builder),
+                   "PROCESSES": processes}
+            result = subprocess.run(["bash", "-c", harness], env=env,
+                                    capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(trace.read_text().splitlines(),
+                             ["installed", "kill:412", "host:kickstart"])
 
 
 class PrivateFiles(unittest.TestCase):
@@ -365,7 +412,7 @@ class Cleanup(unittest.TestCase):
                     patch("subprocess.run") as run, patch("builtins.print"):
                 cli._cleanup()
             unhook.assert_called_once()
-            self.assertIn("bootout", run.call_args[0][0])
+            self.assertTrue(any("bootout" in call.args[0] for call in run.call_args_list))
             self.assertFalse(plist.exists())
 
 

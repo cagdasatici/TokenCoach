@@ -1,20 +1,23 @@
 ---
 phase: active
-milestone: v1.2.0 - acceptance on the mini: B, C (brew), E, F pass; A, G partial; D, H, C (git) open
+milestone: v1.2.0 - db47d43 candidate: A/D/G/H partial, E recheck passed; C git open; B/C brew/F need applicability review
 backlog: docs/plans/2026-09-29-remaining-release-work.md
 ---
 
 ## Next
-- Re-run A and E quickly on the current main (10abd64 or later): install.sh, doctor and widget changed after they passed
-- Path D: rename migration against a simulated AIQuotaBar install (no upstream code)
+- A/E candidate rechecks recorded on db47d43: install probes and both uninstall modes pass; A still needs visible/menu/login checks
+- Path D synthetic settings/history/agents/cron migration probes pass; visible duplicate check and legacy ledger/widget coverage remain open
 - Path C, git half: install v1.1.0 with the script, auto-update to a signed main commit
-- Path G display and H: need a signed-in provider; owner checks the widget and menu bar
-- Then tag v1.2.0, publish the tarball, bump the formula, restore the mini's tapped formula
+- Owner confirms restored Homebrew HEAD-b6ac93b menu percentages, dashboard opening and matching widget values; repeat on the candidate and check widget refresh. H transitions remain open
+- Candidate db47d43 now running with original data/sign-ins and rebuilt widget for owner observations; original Homebrew setup backed up for restoration after checks
+- Owner confirms candidate menu/dashboard and matching widget after the fixed rebuild. Host relaunch passes (1.1 seconds, one process). G automatic refresh after a quota change remains pending; A logout/login closed by owner waiver on 2026-10-06 (not run)
+- PS3 channel documentation and release notes/procedure prepared in docs/release-publication-1.2.0.md; publication and formula bump await PS1/PS2/PS8 acceptance
+- After acceptance, tag v1.2.0, publish the archive and accepted signed/notarized DMG with checksums, bump the formula, verify published routes, restore the mini's tapped formula
 
 ## Blocked
-- Tag and publish v1.2.0: nothing is released until paths A-H pass
+- Tag and publish v1.2.0: nothing is released until PS1 CI, paths A-H and PS8 path I (signed/notarized DMG) pass
 
 ## Needs you
-- A: look at the menu bar icon, click Open dashboard, log out and in
+- A logout/login is owner-waived; no logout action requested
 - H: sign in to Claude in a browser, sign out, network off for a refresh cycle
 - Optional TC4: find 3-5 consenting testers, or drop it

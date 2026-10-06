@@ -9,6 +9,18 @@ PROJECT_DIR="$SCRIPT_DIR"
 BUILD_DIR="$PROJECT_DIR/build"
 APP_NAME="TokenCoachWidget.app"
 
+# Replacing the bundle does not retire an extension already hosted by
+# WidgetKit. That process can keep serving the previous build's timeline even
+# after the new host asks for a reload. Stop only this installed extension;
+# the host's reload below lets WidgetKit launch the newly installed build.
+retire_installed_extension() {
+    local executable="$1/Contents/PlugIns/TokenCoachWidgetExtension.appex/Contents/MacOS/TokenCoachWidgetExtension"
+    ps -Ao pid=,comm= | awk -v p="$executable" '$2 == p {print $1}' |
+        while read -r pid; do
+            kill "$pid" 2>/dev/null || true
+        done
+}
+
 echo ""
 echo "  TokenCoach Widget — builder"
 echo "  ───────────────────────────"
@@ -94,7 +106,7 @@ fi
 echo "  ✓  Signed (ad-hoc, with entitlements)"
 
 INSTALL_PATH="/Applications/$APP_NAME"
-echo "  ↓  Installing to $INSTALL_PATH…"
+echo "  ↓  Installing to ${INSTALL_PATH}…"
 rm -rf "$INSTALL_PATH"
 # ditto, not cp -R: preserves extended attributes so the signature stays intact.
 ditto "$BUILT_APP" "$INSTALL_PATH"
@@ -106,6 +118,8 @@ ditto "$BUILT_APP" "$INSTALL_PATH"
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 "$LSREGISTER" -u "$BUILT_APP" 2>/dev/null || true
 "$LSREGISTER" -f "$INSTALL_PATH" 2>/dev/null || true
+
+retire_installed_extension "$INSTALL_PATH"
 
 # Launch, and leave it running. Besides registering the widget, the host
 # watches usage.json and asks WidgetKit to refresh when the menu bar app

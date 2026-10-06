@@ -1,11 +1,14 @@
 # TokenCoach
 
-**See what every Claude and ChatGPT prompt really costs, and get coached to spend less
-for the same results.** A macOS menu bar app for people who live in Claude Code and Codex.
+**See the API-equivalent cost of your Claude and ChatGPT prompts, and get coaching
+on costly habits.** A macOS menu bar app for people who live in Claude Code and Codex.
+
+Costs compare token use at API prices; they are not your subscription bill. Claude quota
+per prompt is estimated from quota readings; unattributed usage is shown as unknown.
 
 [![macOS](https://img.shields.io/badge/macOS-12%2B-black)](#install)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Local only](https://img.shields.io/badge/data-stays%20on%20your%20Mac-blue)](#privacy)
+[![Local ledger](https://img.shields.io/badge/ledger-stored%20locally-blue)](#privacy)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
@@ -37,16 +40,29 @@ TokenCoach turns those habits into numbers, then helps you change them, and show
 
 TokenCoach reads the transcripts that **Claude Code, Cowork and Codex** already write on your
 Mac and keeps a local ledger: one row per prompt, with tokens, model, project, what it would
-cost at API prices, and how much of your 5-hour quota it used.
+cost at API prices, and its attributed share of your 5-hour quota (estimated for Claude).
 
 The menu bar shows the quota you have **left** for Claude and ChatGPT, today's spend, and your
-most expensive prompt. Like the battery icon, a percentage turns orange when you're running low
-or on pace to run out before the reset, and red when that limit is empty.
+most expensive prompt. Percentages are bright white when healthy and soft yellow when quota
+is low, on pace to run out before reset, or exhausted. The dashboard uses green, amber and red
+for its separate health summary.
 
 **Open dashboard** starts with one answer: **healthy, watch or action needed**. It is decided
 by the worst of three checks: quota left right now, your weekly pace, and your habits (cost per
 prompt against your own usual). Below that is everything by day, project, model and tool, with an
 **All / Claude / OpenAI** switch and an **Advanced** mode for the deep dive.
+
+In the current development code, the live dashboard has one authenticated local
+address, including across restarts when port 47821 is available. You can bookmark it;
+the address contains a private access token, so do not share it. An idle visible page
+fetches current data every five minutes, preserving filters, view and scroll. Refresh
+waits while you edit lessons, keep an opened rewrite, or run an action, then resumes.
+The header shows the last completed usage scan and unavailable/stale state; quota
+readings keep their own timestamps. A port conflict produces a labelled read-only
+snapshot instead of silently changing the address. Resolve the conflict and restart
+the app to restore the live page. Browser opening still uses macOS `open`: repeated
+clicks may create duplicate tabs, depending on the browser. Automatic tab reuse is
+not implemented and adds no browser automation permission.
 
 <br clear="right">
 
@@ -124,19 +140,42 @@ period with an earlier one measured the same way, not with an absolute target.
 
 ## Install
 
-**One line** (recommended; also sets up start-at-login and the optional desktop widget):
+The documentation below describes the `main` development channel. The Homebrew
+formula currently ships **v1.1.0**; features added after that release, including yield
+tracking, require `main` until v1.2.0 is accepted and published. A signed, notarized
+DMG build is implemented, but signing and clean-Mac acceptance are pending; no public DMG is available.
+
+**DMG — primary path for the upcoming packaged release (pending):** download the
+image for Apple Silicon or Intel, drag TokenCoach to Applications, eject the image,
+and open the app. The package includes Python and core dependencies; the optional
+widget is excluded. macOS 14+ is the release target, pending validation on both CPUs.
+Use Settings → Launch at Login if wanted. See [DMG installation, upgrades and removal](docs/macos-distribution.md).
+Until a signed/notarized image passes acceptance and is published, use an alternative below.
+
+**Script install — moving `main` channel** (also sets up start-at-login and the optional desktop widget):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cagdasatici/TokenCoach/main/install.sh | bash
 ```
 
-**Homebrew:**
+The script follows `main`, which can include changes before a stable release. It
+automatically updates a clean `main` checkout only to commits signed by a key
+trusted by the installed copy. Local tracked edits or a different branch stop
+auto-update.
+
+**Homebrew — stable release:**
 ```bash
 brew tap cagdasatici/tokencoach https://github.com/cagdasatici/TokenCoach
 brew trust --formula cagdasatici/tokencoach/tokencoach   # Homebrew 7 asks before loading formulae from other taps
 brew install tokencoach
 tokencoach &          # first run adds it to your login items
 ```
-Upgrading from 1.1.0 with `brew upgrade`: run `tokencoach &` once afterwards. The 1.1.0 login item points at a folder the upgrade removes; starting 1.2.0 repairs it.
+Homebrew updates through `brew update && brew upgrade tokencoach`; the app does
+not run its git updater for Homebrew installations. This currently installs v1.1.0.
+When v1.2.0 is published, run `tokencoach &` once after upgrading from v1.1.0 so
+it can repair the login item that points at the removed version folder.
+
+Release preparation and acceptance gates are recorded in
+[the v1.2.0 publication procedure](docs/release-publication-1.2.0.md).
 
 **Just look first.** The demo uses sample data and doesn't read or change anything of yours:
 ```bash
@@ -147,11 +186,14 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 Requirements: macOS 12+, Python 3.10+. Claude Code and/or Codex for per-prompt tracking;
 a claude.ai or chatgpt.com login in your browser for the quota-left bars. The desktop widget
-needs Xcode (the installer builds it when Xcode is present).
+requires macOS 14+ and Xcode (the installer builds it when Xcode is present).
 
 **Uninstall:** `bash ~/.tokencoach/uninstall.sh` (add `--purge` to delete your data too).
 With Homebrew: `tokencoach --cleanup && brew uninstall tokencoach` (the first step removes the
 login item and the Claude Code hook, which Homebrew can't).
+Applied lessons remain in your `CLAUDE.md` / `AGENTS.md` files, even with `--purge`.
+Use **Remove** in the dashboard before uninstalling, or delete the marked TokenCoach lesson
+block afterwards. Normal uninstall retains local data; `--purge` deletes app data and logs.
 
 **Upgrading from AIQuotaBar or AIQuotaLeft:** run the one-line installer above. It stops the
 old launch agents, watchdog and widget, moves your settings and quota history into TokenCoach,
@@ -159,6 +201,28 @@ and removes the old `~/.ai-quota-bar` folder. Your data is kept. AIQuotaLeft ins
 auto-update make this move by themselves on their next start.
 
 ---
+
+## Your first five minutes
+
+1. **Install and launch.** Choose a route in [Install](#install). The script starts
+   the app; with Homebrew, run `tokencoach &`. Look for ◆ in the macOS menu bar.
+2. **Connect quota if you want it.** Sign in at claude.ai or chatgpt.com, then choose
+   **Auto-detect from Browser** in the ⚙ menu. For a Chrome-family Keychain request,
+   choose **Allow**. You can skip browser access: local transcript tracking still works,
+   and ChatGPT quota can use an existing Codex CLI sign-in.
+3. **Open dashboard** from the menu bar panel. Start with **All** and the simple view.
+   Give the first transcript scan time to finish; a large history can take longer.
+4. **Read your first result.** Quota percentages mean **remaining**, and dollar amounts
+   compare tokens at API prices. They are not charges on your subscription. “—” or
+   “No reading” means unavailable or unmeasured, not zero. Health is a summary of the
+   available quota and habit signals, not proof that every provider is connected.
+5. **If history is empty**, use Claude Code, Cowork or Codex for a normal task on this
+   Mac, then check again after the next scan (normally within five minutes). Select a
+   date range and provider that include that activity. Browser chats are not collected
+   automatically; importing an export is a separate, optional step.
+
+See [the first-run guide](docs/first-run.md) for empty states and recovery steps.
+You can inspect the dashboard without running Analyze, Improve or applying lessons.
 
 ## What the numbers mean
 
@@ -187,7 +251,7 @@ like its closest published sibling and labelled *estimated*. Override anything i
 
 ## Privacy
 
-- **Everything stays on your Mac.** The ledger is a local SQLite file; the dashboard is served
+- **Local storage:** the ledger, including prompt text, is a local SQLite file; the dashboard is served
   only on `127.0.0.1`, behind a per-install key.
 - **What is read:** Claude Code transcripts (`~/.claude/projects`), Cowork logs, Codex sessions
   (`~/.codex/sessions`), commit messages, dates and file names (`git log`) of repositories you
@@ -200,16 +264,22 @@ like its closest published sibling and labelled *estimated*. Override anything i
   **Set Session Cookie…**). Without a ChatGPT browser session it uses the Codex CLI's own
   sign-in (`~/.codex/auth.json`), read only, never copied, and sent only to chatgpt.com. Cookies
   are only ever sent to claude.ai / chatgpt.com, and never written to the log.
-- **What leaves, and only when you click:** **Analyze deeper** and **Improve** send a digest of
+- **Quota requests:** TokenCoach contacts provider usage endpoints to refresh quota and balance
+  readings, using the relevant sign-in credentials.
+- **Prompt content sent when you click:** **Analyze deeper** and **Improve** send a digest of
   your costliest prompts (or the one prompt) to Claude through *your own* `claude` CLI, running
   Sonnet 5 with all tools off. That counts against your Claude plan like any Claude Code prompt,
-  typically $0.03–0.12 API-equivalent per run, and TokenCoach tracks it like any other session.
+  and TokenCoach tracks its API-equivalent cost like any other session. Cost varies with input
+  and output size.
 - **What changes on your Mac:** a login agent, a small watchdog that restarts the app if it
   dies, the Claude Code hook (a backup of `~/.claude/settings.json` is written first, and you
   can turn nudges off in the menu), lesson blocks you choose to apply, and a git hook in each
-  repository you track with `--yield-install`. The uninstaller removes all of it. Lessons that
-  Analyze proposes are never applied without you reading and confirming the exact rule.
-- **Updates:** a script install updates itself only to commits on `main` signed by a key in
+  repository you track with `--yield-install`. The script uninstaller removes the app, launch
+  agents, widget and installed hooks; applied lesson blocks remain until removed separately.
+  Lessons that Analyze proposes are never applied without you reading and confirming the exact rule.
+- **Updates and dependencies:** installation and updates contact GitHub and Python package
+  sources to download code and dependencies. A script install updates itself only to commits
+  on `main` signed by a key in
   [`allowed_signers`](allowed_signers), checked against the copy you already have, and installs
   Python packages only if their hashes match `requirements.txt`. Homebrew installs update with
   `brew upgrade`.
@@ -224,6 +294,15 @@ like its closest published sibling and labelled *estimated*. Override anything i
 - **Command line:** `tokencoach --help` with Homebrew, otherwise
   `~/.tokencoach/.venv/bin/python ~/.tokencoach/tokencoach.py --help` (`--ledger`, `--dashboard`,
   `--optimize`, `--import-export FILE`, `--demo`, `--cleanup`).
+
+## Support and security
+
+Report bugs and usage questions in [GitHub Issues](https://github.com/cagdasatici/TokenCoach/issues).
+Include About TokenCoach or `tokencoach --version`, macOS, installation method and
+reproduction steps; see [support and contribution guidance](CONTRIBUTING.md). Older
+releases may lack version reporting. Support is best effort, with no guaranteed response time.
+Never post credentials, cookies, dashboard URLs, prompts, raw logs or personal screenshots.
+Report vulnerabilities privately through the [security policy](SECURITY.md).
 
 ## Credits
 

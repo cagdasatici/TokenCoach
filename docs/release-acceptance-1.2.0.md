@@ -3,11 +3,11 @@
 Plan: [remaining release work](plans/2026-09-29-remaining-release-work.md), TC3.
 Status: **acceptance in progress on the Mac mini** (started 2026-10-03).
 
-- **Release candidate:** the commit on `main` that gets tagged `v1.2.0`. Nothing is tagged yet. The code has no version string, so the tag and `Formula/tokencoach.rb` are the version. Fill in the real SHA when the mini session starts: `git rev-parse HEAD`.
+- **Selected application candidate (2026-10-05):** `db47d43e221bbc2ae4a1f236d4c2c4143cae90da`. Its SSH signature verifies against the checkout's `allowed_signers`. Nothing is tagged yet. Application, installer and widget files in the working tree match this commit; uncommitted documentation and packaging-test changes still need inclusion in a final release revision and applicability review. The code has no version string, so the tag and `Formula/tokencoach.rb` are the version.
 - **Previous version:** `v1.1.0` (formula at v1.1.0, ledger schema 1).
 - **New version:** v1.2.0 (ledger schema 5, yield, quota attribution).
 - **Machine:** Mac mini `Mac18,5`, macOS 27.0.1 (26A434), Xcode 27.0, Homebrew; account `cagdas` (the owner's fresh mini account, wiped of TokenCoach by path E before A).
-- **Tested revisions:** E, A, F, G on `9a3f5c6`; B and C (brew) on `bb1e5b3`. Since then `f459198` (security audit: signed-only auto-update, hashed requirements, narrower widget sandbox), `b0bd3ed` (lessons left in the block are adopted, not dropped) and `10abd64` (Quit sticks: the doctor leaves a quit app stopped). Release candidate is now `10abd64` or later; re-run A and E quickly on it, since install.sh, the doctor and the widget changed.
+- **Tested revisions:** historical E, A, F, G on `9a3f5c6`; B and C (brew) on `bb1e5b3`. Since then `f459198` (security audit: signed-only auto-update, hashed requirements, narrower widget sandbox), `b0bd3ed` (lessons left in the block are adopted, not dropped) and `10abd64` (Quit sticks: the doctor leaves a quit app stopped). A/E rechecks and D simulation on `db47d43` are recorded below; historical results alone do not establish candidate acceptance.
 - **Path D plan:** no upstream AIQuotaBar install. The owner doesn't want third-party code on the machine, so the tap was removed; D runs against a simulated pre-rename install (old LaunchAgent labels, `~/Library/Application Support/AIQuotaBar`, `~/.claude_bar_config.json`, watchdog cron line) built from what `install.sh` and `tokencoach/legacy.py` migrate.
 
 ## Pre-checks on the owner's Mac (2026-09-29, revision `18a3c14`)
@@ -21,6 +21,98 @@ These did not touch the running install: scratch `HOME`, scratch data dir.
 | `TOKENCOACH_NO_LAUNCH=1 TOKENCOACH_DIR=<scratch> TOKENCOACH_REPO=$PWD bash install.sh` with scratch `HOME` | exit 0, installed `18a3c14`, self-check passed, no LaunchAgents written, repo clean |
 
 Limits: synthetic logs, ledger only. The instruction-file block, nudge setting, menu bar icon, single-process check and everything in A–H still need the mini.
+
+## PS2 preparation — 2026-10-05
+
+- Checkout base: `db47d43e221bbc2ae4a1f236d4c2c4143cae90da`, with uncommitted PS1/PS4 documentation and packaging-test changes plus the PS2 procedure corrections. This is not yet a fixed release candidate; historical A–G results do not establish acceptance of this working tree.
+- `.venv/bin/python -m unittest discover -s tests`: 292 tests pass with loopback binding permitted. The sandboxed run had four listener-test errors (`PermissionError` when binding); the permitted rerun passed. An existing non-failing unclosed log-file `ResourceWarning` remains.
+- The owner subsequently authorized live acceptance on this account. The completed checks and remaining limitations follow below. B/C (brew) and F need applicability review; C (git), visible A/D/G checks, and H transitions remain open.
+- Path D's procedure now consistently uses the agreed simulation, without installing upstream code.
+
+## Candidate live rechecks — 2026-10-05
+
+Revision: `db47d43e221bbc2ae4a1f236d4c2c4143cae90da`; Mac mini `Mac18,5`, macOS 27.0.1 (26A434), Xcode 27.0 (27A266a). Original install: Homebrew `HEAD-b6ac93b`, with one supervised app and an existing widget. Private owner-only backup outside the repository; original data parked during tests and restored afterwards.
+
+Installer source was a local bare clone of this repository whose `main` points at the exact signed candidate, created with `git clone --bare --quiet /Users/cagdas/Projects/TokenCoach /private/tmp/tokencoach-ps2-candidate.git`. This tests candidate installer behavior, not the public download route. No upstream third-party installation was used.
+
+| Path | Steps and observations | Result / limitations |
+|---|---|---|
+| A, recheck | Stop the original brew app with `tokencoach --cleanup`; park original data; `TOKENCOACH_REPO=/private/tmp/tokencoach-ps2-candidate.git bash install.sh`. Exit 0, self-check and widget build succeed. App, doctor and widgethost agents present; app and widgethost have RunAtLoad and KeepAlive; one script app process. Cron watchdog confirmed installed. Dashboard GET with `?t=<private token>` returns 200, missing token and foreign Host return 403. Config mode 0600, ledger schema 5; instruction files unchanged. `tokencoach-doctor.sh --check`: 12 ok, one failure for absent usage cache, icon check inconclusive. | Partial: menu click, visible icon and actual logout/login unobserved. Existing session logs remain available for indexing; this is a fresh TokenCoach data/install check, not a brand-new macOS user. Installer paused in crontab before eventually completing; the later cron probe passed. |
+| D, simulation | After non-purge uninstall, park fresh test data. Create synthetic old support directory with `migration-marker.txt`, old config (`refresh_interval=60`, `seen_welcome=true`, `nudges_enabled=false`), old history (`claude: [[1791158400,12]]`), empty old install directory, three old-label agents running `/usr/bin/true`, and a harmless cron fixture containing the old watchdog name. Run the same candidate installer. Marker, refresh setting and exact history survive; old config/history files, support directory, install directory, agent files and cron line are removed. Launchctl lists only new agents; one candidate app process. | Probe pass; visible duplicate-menu check pending. Synthetic fixture contains no old ledger or widget binary; prior unit checks cover ledger/data moves, but this run does not establish legacy ledger upgrade or old widget process shutdown. |
+| E, non-purge | Install a yield hook in a disposable git repo with `tokencoach.py --yield-install`; run `bash ~/.tokencoach/uninstall.sh`. Exit 0. App agents, script install, widget and disposable yield hook removed. Data retained; prompts/calls/lessons counts do not decrease; non-hook settings preserved. | Pass for these probes. Earlier record remains the evidence for preservation of other hook entries. |
+| E, purge | After D, `bash ~/.tokencoach/uninstall.sh --purge`. Exit 0; synthetic test data and logs, script install, agents and widget removed. Original data remained parked outside the purge paths. | Pass; only test data purged. |
+| G, build | Both candidate installer runs build, sign and install the widget; widgethost runs under the new agent. | Build probe pass; remaining-quota display, refresh comparison and candidate host relaunch still unobserved. Restored original widget signature verifies. |
+| H, missing sign-in | Fresh candidate config has no Claude cookie; dashboard is reachable; no usage cache is written. App remains running; doctor reports missing cache rather than a measured quota. | Partial: visible unavailable states, ChatGPT/Codex absence, expired access, offline and stale transitions not established. |
+
+Restoration: original data directory moved back, original logs/settings/login plist/widget applications/cron/repository hooks restored, original brew login agent bootstrapped and kickstarted. Verification: original ledger table counts retained (schema 5); settings, CLAUDE.md and AGENTS.md byte-identical to backup; crontab identical; one Homebrew app process; candidate script install removed. Private backup retained for recovery.
+
+Probe correction: the first dashboard request incorrectly used `?token=` and returned 403. That request's accidentally unredacted token was removed from the test log; the correct `?t=` probe produced the results above. No credential values are recorded here.
+
+**Still required:** C git auto-update/data preservation/restart; actual A logout/login and menu opening; D visible duplicate check and remaining fixture coverage; G display/refresh/relaunch; all H transitions; review or repeat B/C (brew) and F against the final revision. PS2 is not signed off.
+
+### Owner observations after restoration — 2026-10-05
+
+The owner confirms that the restored Homebrew installation (`HEAD-b6ac93b`)
+shows a visible menu icon with percentages for both Claude and OpenAI, and
+clicking **Open dashboard** opens the dashboard. The widget was not placed;
+the owner added it and confirms that its values match the menu bar.
+
+These are passing observations for the restored installation's visible menu,
+dashboard opening and initial widget display. They do not establish candidate
+`db47d43` UI acceptance, widget refresh after a usage change, or logout/login.
+Provider authentication transitions also remain untested.
+
+Following that report, the candidate was installed again with the original
+data and provider settings retained: `tokencoach --cleanup`, then
+`TOKENCOACH_REPO=/private/tmp/tokencoach-ps2-candidate.git bash install.sh`.
+Installer exit 0; exact installed SHA is `db47d43e221bbc2ae4a1f236d4c2c4143cae90da`;
+one script app process; original ledger table counts retained; dashboard GET
+returns 200. The widget cache now contains a Claude session and OpenAI rows,
+and the candidate widget was rebuilt. Candidate is left running for owner
+observations; the original Homebrew setup remains backed up for restoration.
+Visible checks and refresh timing are pending.
+
+Owner then confirms candidate `db47d43` has correct menu percentages, checked
+against Codex and Claude, and that **Open dashboard** works. A's visible/menu
+checks pass; actual logout/login is still pending. G currently fails display
+freshness: owner reports OpenAI remaining 43% / 83% in the menu versus
+53% / 85% in the widget (session / weekly). The widget cache contains the
+correct 43% / 83%. A widget extension process from before the candidate
+rebuild remained alive; it was terminated and the supervised candidate host
+restarted with `launchctl kickstart -k`. Owner confirmation after that diagnostic
+restart was subsequently confirmed by the owner: widget values now match
+the menu. This confirms recovery after retiring the resident extension;
+automatic refresh across a subsequent usage change still needs observation.
+
+Fix in the working tree: `widget/build_widget.sh` retires only the installed
+TokenCoach extension after replacing/registering the bundle and before the
+host reload. `tests/test_release.py` executes the builder with fake system
+commands and verifies installation → matching-extension retirement → host
+reload, leaving the host, build-directory extension and other executables
+untouched. The builder's installation-path message also uses braced variable
+expansion to avoid malformed UTF-8 output from macOS Bash.
+
+The fixed builder is an uncommitted overlay on `db47d43`, SHA-256
+`9a602941dff085b917b8c922bc62cfa9d5a5a54cb04c333be2fb1956c0e7939f`.
+Xcode build/sign/install succeeds and fresh host/extension processes replace
+the old ones. Owner confirms the widget still matches the menu after the fixed
+rebuild. Final
+release revision still needs to include this fix; PS2 remains open.
+
+Verification after the fix: all 293 tests pass with loopback binding permitted;
+`git diff --check` passes. Existing non-failing unclosed log-file warning remains.
+
+Widget host recovery on the fixed build: send SIGTERM using
+`launchctl kill SIGTERM gui/<uid>/io.github.cagdasatici.tokencoach.widgethost`;
+a new PID returns in 1.1 seconds, with exactly one host process. G display and
+host recovery now pass for this overlay; automatic refresh after a subsequent
+quota change remains pending. A's actual logout/login also remains pending.
+
+**Owner waiver — 2026-10-06:** the owner cannot log out and instructs us to
+close that item and move on. Logout/login is closed by explicit owner waiver,
+not an executed passing check. Earlier launch-agent configuration and visible
+menu/dashboard observations remain the evidence; actual login recovery is
+unverified. Do not list logout/login as awaiting further owner action.
 
 ## Building the v1.2.0 tarball locally (paths B and C, brew)
 
@@ -81,7 +173,7 @@ Known limits:    the 1.1.0 → 1.2.0 login breakage can't be fixed from 1.2.0 (n
 Path:            D  Rename migration (AIQuotaBar → TokenCoach)
 Revision:        <sha>            Install method: script
 Machine / macOS:
-Steps run:       install upstream AIQuotaBar, run until it has settings and history; run the one-line installer
+Steps run:       pending: create the agreed simulated pre-rename install with synthetic settings/history, old LaunchAgent labels and watchdog cron line; run the candidate installer (no upstream code)
 Expected:        old agents, watchdog, widget stopped; settings and history moved; no leftover old agents; no duplicate menu bar items; legacy.py handover checked if a fork install exists
 Actual:
 Result:          not run
@@ -135,3 +227,86 @@ Known limits:
 ```
 
 Add a regression test in `tests/test_release.py` for any failure found.
+
+## Path I — DMG distribution (PS8)
+
+Implementation record — 2026-10-05; **partial, not release acceptance**.
+Working tree based on `db47d43e221bbc2ae4a1f236d4c2c4143cae90da` with prior changes
+preserved. No final candidate commit exists yet.
+
+| Check | Evidence / outcome |
+|---|---|
+| Local package | `scripts/build-dmg.sh --development`: self-contained `TokenCoach.app`, Applications shortcut, installation instructions and TokenCoach icon; Python/dependencies bundled; widget excluded. |
+| Host | macOS 27.0.1 (26A434), arm64, Homebrew Python 3.12.15. |
+| Runtime probes | Packaged `--version` reports `1.2.0.dev0 (db47d43e221b dirty)`; `--bundle-check` imports SQLite, browser_cookie3, curl_cffi and AppKit successfully without account lookup. |
+| Binary baseline | Every bundled Mach-O has arm64 and a minimum OS no newer than this development host. The Python component requires macOS 27; the release checker correctly rejects it for the macOS 14 target. |
+| Signing access | `security find-identity -v -p codesigning`: **0 valid identities**. Development artifact uses ad-hoc signing; no Developer ID/notarization/Gatekeeper release acceptance is claimed. |
+| Automated lifecycle checks | Frozen login/nudge/git-hook/update paths; instance lock exclusion/release; cancellation preserves old install; migration repoints only owned existing git hooks; cleanup preserves unrelated cron/agents/data. |
+| Full suite | 310 tests pass with loopback enabled. Existing non-failing unclosed-log-file ResourceWarning remains. |
+
+Final local artifact: `dist/TokenCoach-1.2.0.dev0-arm64-DEVELOPMENT.dmg`.
+SHA-256: `2dd81735c87d63757e5f936417836e6e64599957cac488aa65a21f2dec88dd57`.
+`hdiutil verify` and the portable checksum sidecar pass. Mounted read-only, the final
+image contains the app and correct Applications link; purpose description, deep/strict
+ad-hoc signature and packaged runtime imports pass. Packaged empty-event nudge and
+git-trailer workers were also exercised with temporary sample files (no menu app or
+real account access). Signing identity lookup was repeated outside the sandbox and
+still reports zero valid identities. The image remains DEVELOPMENT, not a distributable
+accepted release. The older sandbox image-creation failure was resolved with permitted
+disk-device access; the build emits a non-failing `hdiutil create` deprecation warning
+on macOS 27.
+
+Remaining required evidence: final clean signed SHA; Developer ID + notarytool access;
+macOS 14 baseline and Intel builds; browser download and checksum; Gatekeeper opening
+without bypass; drag/install and actual menu/dashboard; permission decline/allow and
+working/empty/unavailable data; ejection/relaunch; logout/login; replacement upgrade;
+script/Homebrew migration and data/lesson preservation; UI cleanup and removal.
+No real running app was restarted/reinstalled to test source edits, and no release
+workflow was dispatched or asset published. Build and end-user procedure:
+[macOS distribution](macos-distribution.md).
+
+## PS9 — dashboard continuity
+
+Implementation record — 2026-10-05; **automated checks pass, live-browser acceptance pending**.
+Same working-tree base as path I. The owner's changing-URL report was not reproduced
+against their running app. Source's arbitrary-port fallback was verified as a mechanism
+that could change the address and removed; authentication was retained.
+
+- Listener integration: occupied port raises rather than relocating/trusting its
+  occupant; stopping/restarting on the same available port retains the exact URL;
+  token persists; `/data` requires both the correct token and Host. Existing POST
+  guards and token-redaction tests still pass. Demo continues using an ephemeral port.
+- Current-version instances share an owner-only advisory lock. An old manually
+  running copy must be quit explicitly; no unrelated listener is killed.
+- Sample-data jsdom test exercises the actual generated dashboard JavaScript:
+  new prompt and quota-health data appear, filters/view/scroll stay, an unsaved
+  editor defers refresh, an editor started during fetch also survives, pending
+  refresh resumes, and network failure keeps previous data with unavailable state.
+  These simulated timers are not a five-minute wall-clock browser acceptance run.
+- Static copies have a read-only label and no live refresh loop. In the live UI,
+  last completed indexing and quota reading timestamps stay distinct; an occupied
+  port sends a read-only notification with recovery instructions.
+- Tab reuse investigation: the existing opener uses macOS `open` for Chrome-family
+  applications or the default browser and has no tab inventory API. Browser-script
+  reuse would require automation access. No such permissions/subsystem was added;
+  repeated opens can still create duplicate tabs. No specific browser's tab/focus
+  behavior was tested or claimed fixed.
+
+Manual checks remain: menu clicks/bookmark across a real app restart; newly indexed
+usage visible within five minutes; protected lesson/rewrite/action interactions;
+actual port-conflict and read-only recovery UI; outage/stale appearance; and record
+actual duplicate-tab/focus behavior per tested browser.
+
+### Cleanup test isolation correction — 2026-10-05
+
+An earlier cleanup test mocked the main agent path but the new cleanup helper used
+real home-directory paths for the doctor/widget-host plist files. Those two files
+were found missing while their jobs remained loaded. Before a restoration write was
+needed they were present again; their contents were verified against the loaded job
+definitions. No service was reloaded/restarted by this work, and the main app and
+widget kept their original PIDs. Cleanup now derives all agent paths from the
+configured main agent directory. A regression uses separate temporary configured
+and home directories and verifies that the latter's agent files stay untouched.
+The corrected full suite passes 310 tests; the final development image was rebuilt
+with this correction. No account data, hooks or instruction files were changed by
+this test incident.

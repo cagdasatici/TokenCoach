@@ -6,6 +6,7 @@ USAGE = """usage: tokencoach [option]
   (without Homebrew: ~/.tokencoach/.venv/bin/python ~/.tokencoach/tokencoach.py [option])
 
   (none)                 run the menu bar app
+  --version              print the app version and build revision (no account access)
   --history, -H          print quota history
   --ledger               index local Claude Code / Cowork / Codex logs, print today's spend
   --dashboard            index, then write and open the usage dashboard (alias: --report)
@@ -131,7 +132,7 @@ def _yield_cli(cmd: str, args: list[str]):
         conn.close()
 
 
-def _cleanup():
+def _cleanup(stop_main=True):
     """Undo what the app set up outside its own folder, for installs without
     uninstall.sh (Homebrew). Data and applied lessons are left alone."""
     import os
@@ -143,21 +144,42 @@ def _cleanup():
         print("Removed the Claude Code nudge hook (settings backup kept)")
     conn = ledger.open_ledger()
     try:
-        for repo in yield_metrics.remove_hooks(conn):
+        for repo in yield_metrics.remove_hooks(conn, strict=True):
             print(f"Removed the git hook from {repo}")
     finally:
         conn.close()
-    subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"], capture_output=True)
-    if os.path.exists(LAUNCH_AGENT_PLIST):
-        os.remove(LAUNCH_AGENT_PLIST)
-        print("Stopped TokenCoach and removed its login item")
+    from tokencoach.runtime import remove_background_agents
+    remove_background_agents(stop_main=stop_main)
+    print("Stopped TokenCoach and removed its background agents")
     print("Data kept in ~/Library/Application Support/TokenCoach. Lessons you applied stay in your "
           "CLAUDE.md / AGENTS.md files; remove them from the dashboard first if you want them gone.")
 
 
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else None
-    if cmd in ("--history", "-H"):
+    if cmd == "--bundle-check":
+        # Packaging smoke test: import dependencies without accessing accounts.
+        import sqlite3
+        import browser_cookie3
+        from curl_cffi import requests
+        from AppKit import NSApplication
+        print("Bundled runtime dependencies available")
+    elif cmd == "--cookie-worker":
+        from tokencoach.providers import _DETECT_SCRIPT
+        # Run only our fixed detection program, in the same crash-isolated child
+        # used by source installs; no external code or account data is cached.
+        sys.argv = [sys.argv[0], sys.argv[2]]
+        exec(compile(_DETECT_SCRIPT, "<cookie-worker>", "exec"), {"__name__": "__main__"})
+    elif cmd == "--tokencoach_nudge.py":
+        from tokencoach.nudge import main as nudge_main
+        nudge_main()
+    elif cmd == "--commit-trailer":
+        from tokencoach.trailer import main as trailer_main
+        trailer_main(sys.argv[2:])
+    elif cmd == "--version":
+        from tokencoach.version import version_string
+        print(f"TokenCoach {version_string()}")
+    elif cmd in ("--history", "-H"):
         from tokencoach.history import cli_history
         cli_history()
     elif cmd in ("--ledger", "--dashboard", "--report", "--optimize", "--import-export"):
@@ -175,6 +197,9 @@ def main():
     elif cmd and cmd.startswith("-"):
         sys.exit(f"tokencoach: unknown option {cmd}\n\n{USAGE}")     # a typo must not start a second app
     else:
+        from tokencoach.runtime import prepare_bundle
+        if not prepare_bundle():
+            return
         from tokencoach.ui import TokenCoachApp
         TokenCoachApp().run()
 

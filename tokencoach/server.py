@@ -64,15 +64,22 @@ class _Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if not self._host_ok():
             return self._send(403, b"Forbidden", "text/plain")
-        if url.path != "/":
+        if url.path not in ("/", "/data"):
             return self._send(404, b"Not found", "text/plain")
         if not self._token_ok(parse_qs(url.query).get("t", [""])[0]):
             return self._send(403, b"Open the dashboard from the TokenCoach menu bar icon.", "text/plain")
         try:
-            from tokencoach.ledger_report import build_report
+            from tokencoach.ledger_report import build_report, dashboard_data
             conn = ledger.open_ledger()
             try:
-                page = build_report(conn, load_config(), live={"token": self.server.token})
+                live = {"token": self.server.token,
+                        "indexed_at": getattr(self.server.app, "_ledger_updated", None),
+                        "index_status": getattr(self.server.app, "_ledger_status", "")}
+                if url.path == "/data":
+                    data = dashboard_data(conn, load_config())
+                    data["live"] = live
+                    return self._json(200, data)
+                page = build_report(conn, load_config(), live=live)
             finally:
                 conn.close()
             self._send(200, page.encode("utf-8"), "text/html; charset=utf-8")
@@ -192,10 +199,9 @@ ACTIONS = {
 
 class DashboardServer:
     def __init__(self, token: str, app=None, port: int = PREFERRED_PORT):
-        try:
-            self.httpd = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
-        except OSError:
-            self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)   # any free port
+        # Never silently move the bookmark to an arbitrary port or trust the
+        # occupant. The UI provides a labelled read-only copy if binding fails.
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
         self.httpd.daemon_threads = True
         self.httpd.token = token
         self.httpd.app = app

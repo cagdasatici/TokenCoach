@@ -100,13 +100,16 @@ def hook_script(install_dir: str) -> str:
     py = os.path.join(install_dir, ".venv", "bin", "python3")
     if not os.path.exists(py):
         py = sys.executable
+    from tokencoach.runtime import bundled
+    command = (shlex.quote(sys.executable) + " --commit-trailer" if bundled() else
+               f"PYTHONPATH={shlex.quote(install_dir)} {shlex.quote(py)} -m tokencoach.trailer")
     return (
         "#!/bin/sh\n"
         f"{HOOK_MARKER} (remove with: tokencoach --yield-remove)\n"
         "# Tags commits made inside Claude Code with their session. Does nothing for\n"
         "# commits made in a terminal, and never stops a commit.\n"
         '[ -n "$CLAUDECODE" ] && [ -n "$CLAUDE_CODE_SESSION_ID" ] || exit 0\n'
-        f"PYTHONPATH={shlex.quote(install_dir)} {shlex.quote(py)} -m tokencoach.trailer \"$@\" "
+        f"{command} \"$@\" "
         ">/dev/null 2>&1\n"
         "exit 0\n"
     )

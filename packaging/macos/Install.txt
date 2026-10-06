@@ -1,0 +1,18 @@
+TokenCoach
+Built on AIQuotaBar by Toprak Yagcioglu; see the app's About menu and bundled LICENSE.
+
+Drag TokenCoach to Applications. Eject this disk image, then open TokenCoach
+from Applications. Look for the ◆ in the menu bar; open Settings → Open Dashboard.
+Use Settings → Launch at Login if you want automatic startup.
+
+This package includes the Python runtime and core dependencies. The optional
+desktop widget is excluded. Local usage requires logs from your agent tools;
+quota needs a signed-in provider account. Browser access can request Keychain
+permission. Empty history and unavailable quota are normal before those exist.
+
+Upgrade: quit TokenCoach, replace it in Applications with a newer verified app,
+then reopen. History, settings and applied lessons stay.
+Removal: choose Settings → Prepare for Removal, then move the app to Trash.
+History, settings, backups and applied lesson blocks are retained.
+
+Development disk images are unsigned test artifacts, not public releases.

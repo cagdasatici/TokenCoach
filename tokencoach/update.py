@@ -31,6 +31,9 @@ def _signed_by_trusted_key(run, install_dir: str, commit: str) -> bool:
 
 def _check_and_apply_update(install_dir: str | None = None) -> bool:
     """Check for a signed update via git and apply it if there is one. Returns True if updated."""
+    from tokencoach.runtime import bundled
+    if bundled():
+        return False  # Signed bundles are replaced from a verified DMG.
     install_dir = install_dir or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if not os.path.isdir(os.path.join(install_dir, ".git")):
         return False  # Not a git install (Homebrew, dev, etc.)

@@ -213,7 +213,7 @@ def refresh(conn, now: float | None = None, min_interval: float = 600) -> bool:
     return True
 
 
-def remove_hooks(conn) -> list[str]:
+def remove_hooks(conn, strict=False) -> list[str]:
     """Take our git hook out of every tracked repository (for uninstalling).
     History and the list of repositories stay. Returns the repositories changed."""
     removed = []
@@ -222,6 +222,8 @@ def remove_hooks(conn) -> list[str]:
             if trailer.uninstall_repo(r["path"]):
                 removed.append(r["path"])
         except (trailer.TrailerError, OSError, subprocess.SubprocessError):
+            if strict and os.path.exists(r["path"]):
+                raise RuntimeError("A tracked repository hook could not be removed. Check access and retry cleanup.")
             log.debug("yield: could not remove the hook from %s", r["path"], exc_info=True)
     return removed
 

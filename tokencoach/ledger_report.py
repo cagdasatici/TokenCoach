@@ -260,10 +260,10 @@ details summary { cursor:pointer; }
 """
 
 DASHBOARD_JS = r"""
-const D = JSON.parse(document.getElementById('data').textContent);
+let D = JSON.parse(document.getElementById('data').textContent);
 const QS = new URLSearchParams(location.search);
 if (QS.get('theme')) document.documentElement.dataset.theme = QS.get('theme');
-const C = D.coach || {lessons: [], improvements: {}, templates: [], nudges: {by_kind: {}}};
+let C = D.coach || {lessons: [], improvements: {}, templates: [], nudges: {by_kind: {}}};
 const SRC = D.sources, SRC_BY = Object.fromEntries(SRC.map(s => [s.key, s]));
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -287,7 +287,7 @@ const GROUPS = {all:'All', claude:'Claude', openai:'OpenAI'};
 const grp = src => D.provider[src] === 'claude' ? 'claude' : 'openai';
 let S = {...DEFAULT};
 try { Object.assign(S, JSON.parse(localStorage.getItem('tokencoach-dash') || '{}')); } catch (e) {}
-S.group = DEFAULT.group;   // a saved "Claude" pick would hide the other provider; always open on All
+S.group = DEFAULT.group;   // begin on All; data refresh preserves the current selection
 if (QS.get('view')) S.adv = QS.get('view') === 'advanced';     // for links and screenshots
 if (QS.get('range')) S.range = QS.get('range');
 const save = () => { try { localStorage.setItem('tokencoach-dash', JSON.stringify(S)); } catch (e) {} };
@@ -295,8 +295,8 @@ let V = S;   // simple view ignores advanced-only filters and measures
 const view = () => S.adv ? S : {...S, metric:'cost', source:'', project:'', model:''};
 
 // ── data: facts = one row per (prompt, model) ─────────────────────────────
-const P = D.prompts.map((p, i) => ({i, id: p[0], t: p[1], src: p[2], proj: p[3], sess: p[4], text: p[5], est: p[6], trunc: p[7]}));
-const F = D.facts.map(r => ({p: P[r[0]], model: D.models[r[1]], calls: r[2], cost: r[3], tin: r[4], tout: r[5],
+let P = D.prompts.map((p, i) => ({i, id: p[0], t: p[1], src: p[2], proj: p[3], sess: p[4], text: p[5], est: p[6], trunc: p[7]}));
+let F = D.facts.map(r => ({p: P[r[0]], model: D.models[r[1]], calls: r[2], cost: r[3], tin: r[4], tout: r[5],
   tcw: r[6], tcr: r[7], q5: r[8], qw: r[9], ctx: r[10], t: r[11], first: r[12], qn: r[13] || 0}));
 // Quota sums: unmeasured quota is unknown, not 0, so a group with nothing measured stays null ('—').
 const addq = (a, v) => v == null ? a : (a || 0) + v;
@@ -329,14 +329,16 @@ function hideTip() { tip.style.display = 'none'; }
 let toastT;
 function toast(msg, ms = 4000) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', ms); }
 
+let pendingActions = 0;
 async function api(path, body) {
   if (!D.live) { toast(D.demo ? 'Buttons work in the live demo: run tokencoach --demo.' : 'Open the dashboard from the TokenCoach menu bar icon to use buttons.'); return null; }
+  pendingActions++;
   try {
     const r = await fetch('/api/' + path, {method:'POST', headers:{'Content-Type':'application/json', 'X-TokenCoach': D.live.token}, body: JSON.stringify(body || {})});
     const j = await r.json();
     if (!j.ok) { toast(j.error || 'Something went wrong'); return null; }
     return j;
-  } catch (e) { toast('TokenCoach is not running. Start it from the menu bar and reopen the dashboard.'); return null; }
+  } catch (e) { toast('TokenCoach is not running. Start it from the menu bar and reopen the dashboard.'); return null; } finally { pendingActions--; }
 }
 async function busy(btn, label, fn) {
   const old = btn.textContent; btn.disabled = true; btn.textContent = label;
@@ -368,7 +370,7 @@ function controls(lo, hi) {
 }
 
 // ── health: one green / amber / red answer (tokencoach/health.py) ────────
-const H = (D.health_samples && D.health_samples[QS.get('health')]) || D.health;
+let H = (D.health_samples && D.health_samples[QS.get('health')]) || D.health;
 const HV = {good:['--good','--good-ink'], watch:['--warn','--warn-ink'], critical:['--bad','--bad-ink'], unknown:['--text-muted','--text-secondary']};
 const HWORD = {good:'Healthy', watch:'Watch', critical:'Action needed', unknown:'No reading'};
 const HBADGE = {good:'OK', watch:'Watch', critical:'Out', unknown:'No reading'};
@@ -419,6 +421,7 @@ function vitalHabits(el, h) {
 }
 function health() {
   if (!H) { $('#health').style.display = 'none'; return; }
+  $('#health').style.display = '';
   const rs = document.documentElement.style;
   rs.setProperty('--state', hcol(H.state)); rs.setProperty('--state-ink', hink(H.state));
   const stale = H.read_at && D.generated - H.read_at > 15 * 60 ? ` Quota as of ${when(H.read_at)}.` : '';
@@ -555,17 +558,18 @@ function coach() {
 document.addEventListener('click', async e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   const act = b.dataset.act, id = b.dataset.id;
+  if (act === 'close-improve') { b.closest('.improve').remove(); return; }
   if (act === 'apply' || act === 'apply-confirm') {
     const l = C.lessons.find(x => x.id === id);
     if (act === 'apply-confirm' && !confirm(`Add this rule to ${fileList(l.files)}?\n\n“${l.rule}”`)) return;
     const r = await busy(b, 'Applying…', () => api('lesson/apply', {id, confirm: act === 'apply-confirm'}));
-    if (r) { toast('Written to ' + fileList(r.files)); setTimeout(() => location.reload(), 900); }
+    if (r) { toast('Written to ' + fileList(r.files)); setTimeout(() => requestRefresh(), 900); }
   } else if (act === 'apply-ready') {
     // the rules sit in collapsed Details: show exactly what is about to be written
     const ready = C.lessons.filter(l => l.status === 'ready');
     if (!confirm(`Add these rules?\n\n${ready.map(l => `• “${l.rule}”\n   → ${fileList(l.files)}`).join('\n\n')}`)) return;
     const r = await busy(b, 'Applying…', () => api('lessons/apply-ready'));
-    if (r) { toast('Written to ' + fileList(r.files)); setTimeout(() => location.reload(), 900); }
+    if (r) { toast('Written to ' + fileList(r.files)); setTimeout(() => requestRefresh(), 900); }
   } else if (act === 'edit') {
     const l = C.lessons.find(x => x.id === id), row = document.getElementById('lesson-' + id);
     if (row.querySelector('.editor')) return;
@@ -589,10 +593,10 @@ document.addEventListener('click', async e => {
     const body = {id, title: ed.querySelector('.ed-title').value, rule: ed.querySelector('.ed-rule').value};
     if (ed.querySelector('.ed-scope')) { body.scope = ed.querySelector('.ed-scope').value; body.tools = ed.querySelector('.ed-tools').value; }
     const r = await busy(b, 'Saving…', () => api('lesson/edit', body));
-    if (r) { toast('Saved.'); setTimeout(() => location.reload(), 500); }
+    if (r) { ed.remove(); toast('Saved.'); setTimeout(() => requestRefresh(), 500); }
   } else if (act === 'unapply' || act === 'dismiss') {
     const r = await busy(b, '…', () => api(act === 'unapply' ? 'lesson/unapply' : 'lesson/dismiss', {id}));
-    if (r) location.reload();
+    if (r) requestRefresh();
   } else if (act === 'goto-lesson') {
     const row = document.getElementById('lesson-' + id); if (!row) return;
     row.scrollIntoView({behavior: 'smooth', block: 'center'});
@@ -600,11 +604,11 @@ document.addEventListener('click', async e => {
     const d = row.querySelector('details'); if (d) d.open = true;
   } else if (act === 'nudges') {
     const r = await busy(b, '…', () => api('nudges', {on: b.dataset.on === '1'}));
-    if (r) { toast(r.on ? 'Nudges on — you will see them in Claude Code.' : 'Nudges off.'); setTimeout(() => location.reload(), 700); }
+    if (r) { toast(r.on ? 'Nudges on — you will see them in Claude Code.' : 'Nudges off.'); setTimeout(() => requestRefresh(), 700); }
   } else if (act === 'analyze') {
     toast('Analyzing your costliest prompts with Claude — about a minute…', 90000);
     const r = await busy(b, 'Analyzing…', () => api('analyze'));
-    if (r) { toast('Done.'); setTimeout(() => location.reload(), 600); }
+    if (r) { toast('Done.'); setTimeout(() => requestRefresh(), 600); }
   } else if (act === 'improve' || act === 'improve-again') {
     const box = document.getElementById('imp-' + b.dataset.i);
     if (act === 'improve' && box.innerHTML) { box.innerHTML = ''; return; }
@@ -614,6 +618,7 @@ document.addEventListener('click', async e => {
     if (!r) return;
     C.improvements[p.id] = {rewrite: r.rewrite, why: r.why};
     box.innerHTML = improveBox(p, r);
+    box.querySelector('.improve').dataset.protect = '1';
   } else if (act === 'copy') {
     const p = P[+b.dataset.i], text = (C.improvements[p.id] || {}).rewrite || '';
     try { await navigator.clipboard.writeText(text); toast('Copied — paste it into Claude or Codex.'); } catch (err) { toast('Copy failed; select the text instead.'); }
@@ -637,6 +642,7 @@ function improveBox(p, r) {
     ${r.why && r.why.length ? `<ul>${r.why.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
     <div class="acts"><button class="btn primary" data-act="copy" data-i="${p.i}">Copy</button>
     <button class="btn" data-act="save-template" data-i="${p.i}">Save as template</button>
+    <button class="btn link" data-act="close-improve">Close</button>
     <button class="btn link" data-act="improve-again" data-i="${p.i}">Try again</button></div></div>`;
 }
 function templates() {
@@ -906,6 +912,7 @@ function render() {
   V = view();
   const [lo, hi] = rangeBounds(S.range), rows = filtered(lo, hi), prev = filtered(lo - (hi - lo), lo);
   controls(lo, hi); tiles(rows, prev); coach(); yieldCard(); timeline(rows, lo, hi); topPrompts(rows); templates();
+  $('#latest-advice').innerHTML = D.advice_html || '';
   if (S.adv) {
     quotaChart(lo, hi); heatmap(rows);
     breakdown($('#by-project'), rows, f => f.proj, 'project');
@@ -925,7 +932,15 @@ health(); render();
 // ?hide=id,id  hides parts of the page (used for focused screenshots)
 for (const id of (QS.get('hide') || '').split(',').filter(Boolean)) { const el = document.getElementById(id); if (el) el.style.display = 'none'; }
 const age = Math.round((Date.now() / 1000 - D.generated) / 60);
-$('#updated').textContent = D.demo ? 'Sample data' : `updated ${when(D.generated)}` + (!D.live && age > 20 ? ` · ${age} min ago` : '') + (D.live ? '' : ' · read-only copy');
+function freshness(unavailable = false) {
+  const indexed = D.live && D.live.indexed_at;
+  const stale = indexed && Date.now() / 1000 - indexed > 10 * 60;
+  $('#updated').textContent = D.demo ? 'Sample data' : unavailable
+    ? 'App unavailable · showing previous data'
+    : D.live ? (indexed ? `Usage indexed ${when(indexed)}` + (stale ? ' · stale' : '') : 'Usage index not yet available') + (D.live.index_status ? ' · ' + D.live.index_status : '')
+    : `Snapshot ${when(D.generated)} · read-only copy`;
+}
+freshness();
 // On resize redraw only the charts, so an open lesson editor or rewrite survives.
 function redrawCharts() {
   const [lo, hi] = rangeBounds(S.range), rows = filtered(lo, hi);
@@ -933,8 +948,48 @@ function redrawCharts() {
   if (S.adv) { quotaChart(lo, hi); heatmap(rows); }
 }
 let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(redrawCharts, 150); });
-// Pick up fresh data every 5 minutes (state persists), unless the person is mid-action.
-setInterval(() => { if (!document.querySelector('button[disabled]') && !document.querySelector('.improve')) location.reload(); }, 5 * 60 * 1000);
+// Fetch data without navigating away. Never replace an editor, rewrite, or
+// active action. A deferred refresh runs as soon as the interaction finishes.
+let refreshDue = false, refreshing = false;
+function requestRefresh() { refreshDue = true; refreshData(); }
+const protectedInteraction = () => pendingActions || document.querySelector('button[disabled], .improve[data-protect], .editor')
+  || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+async function refreshData() {
+  if (!D.live || document.hidden || protectedInteraction() || refreshing) return;
+  refreshing = true;
+  try {
+    const url = new URL(location.href); url.pathname = '/data';
+    const response = await fetch(url, {cache:'no-store', signal:AbortSignal.timeout(15000)});
+    if (!response.ok) throw new Error('unavailable');
+    const next = await response.json();
+    // An interaction may have started while the network request was pending.
+    if (protectedInteraction()) return;
+    const x = scrollX, y = scrollY;
+    const expanded = [...document.querySelectorAll('details[open]')].map(el => {
+      const parent = el.parentElement.closest('[id]');
+      return parent ? [parent.id, [...parent.querySelectorAll('details')].indexOf(el)] : null;
+    }).filter(Boolean);
+    D = next;
+    H = (D.health_samples && D.health_samples[QS.get('health')]) || D.health;
+    C = D.coach || {lessons: [], improvements: {}, templates: [], nudges: {by_kind: {}}};
+    P = D.prompts.map((p, i) => ({i, id:p[0], t:p[1], src:p[2], proj:p[3], sess:p[4], text:p[5], est:p[6], trunc:p[7]}));
+    F = D.facts.map(r => ({p:P[r[0]], model:D.models[r[1]], calls:r[2], cost:r[3], tin:r[4], tout:r[5], tcw:r[6], tcr:r[7], q5:r[8], qw:r[9], ctx:r[10], t:r[11], first:r[12], qn:r[13] || 0}));
+    F.forEach(f => { f.src = f.p.src; f.proj = f.p.proj; });
+    health(); render(); freshness();
+    for (const [id, index] of expanded) {
+      const parent = document.getElementById(id);
+      const detail = parent && parent.querySelectorAll('details')[index];
+      if (detail) detail.open = true;
+    }
+    scrollTo(x, y);
+    refreshDue = false;
+  } catch (e) { freshness(true); } finally { refreshing = false; }
+}
+if (D.live) {
+  setInterval(() => { refreshDue = true; refreshData(); }, 5 * 60 * 1000);
+  setInterval(() => { if (refreshDue) refreshData(); }, 5000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && refreshDue) refreshData(); });
+}
 """
 
 PAGE = """<!doctype html>
@@ -985,7 +1040,7 @@ PAGE = """<!doctype html>
   <select id="sort" aria-label="Sort prompts"><option value="cost">Most expensive</option><option value="tokens">Most tokens</option>
   <option value="quota">Most quota</option><option value="recent">Most recent</option></select></span></div>
   <div id="prompts"></div><button class="btn link more" id="p-more">Show more</button></div>
-{advice}</section>
+<div id="latest-advice">{advice}</div></section>
 <p class="note">API-equivalent $ is what the same tokens would cost on the provider's API at list price; on a subscription you pay a flat fee, so use it to compare, not as a bill. {unpriced}</p>
 </main><div id="tip" role="tooltip"></div><div id="toast" role="status"></div>
 <script type="application/json" id="data">{data}</script>
@@ -1097,6 +1152,7 @@ def dashboard_data(conn, config: dict | None = None, days: int = DASHBOARD_DAYS)
         "plans": config.get("ledger_plans") or {},
         "has_chat": bool(present & {"claude_chat", "chatgpt_chat"}),
         "coach": coach_data, "yield": yield_data, "last_analysis": last_analysis,
+        "advice_html": _latest_advice(),
         "nudges_on": True if DEMO else nudge.is_installed(), "demo": DEMO,
         "home": os.path.join(os.path.dirname(ledger.LEDGER_DB), "demo-home") if DEMO else os.path.expanduser("~"),
         "equivalents": {m: ledger.equivalent_model(m, ledger.ledger_overrides(config))
@@ -1149,7 +1205,7 @@ def build_report(conn, config: dict | None = None, days: int = DASHBOARD_DAYS,
     return PAGE.format(
         css=CSS, dcss=DASHBOARD_CSS, js=DASHBOARD_JS, data=blob,
         chat=" · chat imports" if data["has_chat"] else "",
-        advice=_latest_advice(), unpriced=html.escape(unpriced),
+        advice=data["advice_html"], unpriced=html.escape(unpriced),
     )
 
 

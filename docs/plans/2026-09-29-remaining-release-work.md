@@ -56,7 +56,7 @@ Goal: each path below gets a record (template at the end). Existing user data su
 4. Expect: row counts ≥ before, `user_version` equal to the new `ledger.SCHEMA_VERSION`, the lesson still applied and still in `CLAUDE.md`, nudges still on. After an auto-update the **menu bar icon is still visible** (the reason for `5ba0865`), and exactly one app process runs (`pgrep -fl tokencoach`).
 
 **D. Rename migration (AIQuotaBar → TokenCoach) with existing data**
-1. On a fresh account, install upstream AIQuotaBar (https://github.com/yagcioglutoprak/AIQuotaBar) and run it until it has settings and history (`~/.claude_bar_config.json`, `~/.claude_bar_history.json`, `~/Library/Application Support/AIQuotaBar/`).
+1. On the dedicated acceptance account, create a simulated pre-rename installation with synthetic settings and history (`~/.claude_bar_config.json`, `~/.claude_bar_history.json`, `~/Library/Application Support/AIQuotaBar/`), old LaunchAgent labels and a watchdog cron line. Record the fixture and back up any existing setup first. Do not install upstream code: the owner chose the simulation route on 2026-10-03.
 2. Run the one-line installer (path A step 1).
 3. Expect: old launch agents, watchdog and widget stopped; settings and history moved (`tokencoach/config.py` `migrate_legacy_data`); no leftover old agents; no duplicate menu bar items. Also check the auto-update handover (`tokencoach/legacy.py`) if an old fork install is available.
 

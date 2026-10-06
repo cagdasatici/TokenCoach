@@ -825,8 +825,11 @@ def _run_cookie_detection(domain: str, target_cookie: str) -> list[str]:
     try:
         # Own process group: on a timeout (a Keychain prompt nobody answered)
         # the `security` child it started must go too, or its dialog stays up.
+        from tokencoach.runtime import bundled
+        args = ([sys.executable, "--cookie-worker", json.dumps(lookups)] if bundled() else
+                [sys.executable, "-c", _DETECT_SCRIPT, json.dumps(lookups)])
         proc = subprocess.Popen(
-            [sys.executable, "-c", _DETECT_SCRIPT, json.dumps(lookups)],
+            args,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True,
         )
         try:

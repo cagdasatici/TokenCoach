@@ -1,0 +1,48 @@
+name: Bug report
+description: Report a reproducible TokenCoach problem.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For security issues, use https://github.com/cagdasatici/TokenCoach/security/advisories/new instead.
+        Never post credentials, cookies, API keys, dashboard URLs (they contain a secret), account details, prompt text, transcripts, raw logs, or personal screenshots.
+        Use synthetic examples. Review and redact any diagnostic excerpt before posting.
+  - type: input
+    id: version
+    attributes:
+      label: TokenCoach version and build
+      description: Copy About TokenCoach or `tokencoach --version`. Older releases may lack this; give the installed release or revision if known.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: macOS version and architecture
+      description: From Apple menu → About This Mac (omit serial number and device name); Intel or Apple silicon.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method
+      options:
+        - Homebrew stable
+        - Homebrew HEAD
+        - Script installer
+        - Source checkout
+        - DMG
+        - Other / unknown
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Include expected and actual behavior, using synthetic data where possible.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics (optional)
+      description: A short reviewed error excerpt only. Remove secrets, usernames, local paths, repository names, account identifiers and prompt content. Do not upload data folders, configuration, databases or whole logs.

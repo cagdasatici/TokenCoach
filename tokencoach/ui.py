@@ -39,6 +39,8 @@ from tokencoach.update import _check_and_apply_update, _restart_app
 from tokencoach import ledger as _ledger
 from tokencoach import providers as _providers
 from tokencoach import health
+from tokencoach.version import version_string
+from tokencoach.runtime import bundled, launch_args, acquire_instance
 
 
 # -- Brand icon helpers --------------------------------------------------------
@@ -778,8 +780,7 @@ def _is_login_item() -> bool:
 
 
 def _login_item_args() -> list[str]:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return [install_python(root), _script_path()]
+    return launch_args()
 
 
 def _login_item_current() -> bool:
@@ -1882,6 +1883,10 @@ class _UsagePanel:
 
 class TokenCoachApp(rumps.App):
     def __init__(self):
+        self._instance_fd = acquire_instance(wait=3)
+        if self._instance_fd is None:
+            log.info("another TokenCoach instance is already running")
+            os._exit(0)
         # Menu bar only: hide the Dock icon and Cmd-Tab entry. Must happen
         # before the AppKit run loop starts (i.e. before .run()), otherwise
         # the icon flashes into the Dock and back out.
@@ -1949,6 +1954,7 @@ class TokenCoachApp(rumps.App):
         self._ledger_busy = False
         self._ledger_summary: dict | None = None
         self._ledger_status = ""
+        self._ledger_updated = None
         self._optimizer_running = False
         self._last_lesson_scan = 0.0
         try:
@@ -1961,10 +1967,16 @@ class TokenCoachApp(rumps.App):
         # hold the dashboard port while the supervised copy binds it.
         from tokencoach.legacy import finish_legacy_install
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if not finish_legacy_install(root):
-            if not _login_item_current() and _add_login_item(handoff=True):
-                log.info("login agent written; handing over to the copy launchd started")
-                os._exit(0)
+        if not bundled() and not finish_legacy_install(root):
+            if not _login_item_current():
+                os.close(self._instance_fd)
+                self._instance_fd = None
+                if _add_login_item(handoff=True):
+                    log.info("login agent written; handing over to the copy launchd started")
+                    os._exit(0)
+                self._instance_fd = acquire_instance(wait=3)
+                if self._instance_fd is None:
+                    os._exit(0)
             if _job_pid() == os.getpid():
                 for pid in _stop_other_copies():
                     log.info("stopped another copy of this install (pid %d)", pid)
@@ -2002,6 +2014,12 @@ class TokenCoachApp(rumps.App):
 
     def _shutdown(self):
         """Clean up resources on exit."""
+        if self._dashboard is not None:
+            self._dashboard.stop()
+        try:
+            os.close(self._instance_fd)
+        except OSError:
+            pass
         try:
             self._history_db.close()
         except Exception:
@@ -2257,6 +2275,8 @@ class TokenCoachApp(rumps.App):
 
         items.append(None)
         items.append(rumps.MenuItem(f"About {APP_NAME}", callback=self._about))
+        if bundled():
+            items.append(rumps.MenuItem("Prepare for Removal…", callback=self._prepare_removal))
         items.append(rumps.MenuItem("Quit", callback=_quit_app))
 
         self.menu.clear()
@@ -2381,6 +2401,16 @@ class TokenCoachApp(rumps.App):
 
     def _check_widget_status(self):
         """Show startup info about what the app is doing."""
+        if bundled() and not self.config.get("bundle_welcome"):
+            rumps.alert(title="Welcome to TokenCoach", message=(
+                "Find the ◆ in the menu bar and use Open Dashboard. Quota needs a signed-in account; "
+                "local usage appears when Claude Code, Cowork or Codex logs are present. Browser access "
+                "may ask for Keychain permission. You can decline and still track local usage.\n\n"
+                "Use Launch at Login in Settings if you want automatic startup. This download does not "
+                "include the optional desktop widget. Before deleting the app, choose Prepare for Removal."
+            ))
+            self.config["bundle_welcome"] = True
+            save_config(self.config)
         seen_welcome = self.config.get("seen_welcome", False)
         widget_ok = _is_widget_installed()
 
@@ -2422,6 +2452,9 @@ class TokenCoachApp(rumps.App):
 
     def _install_widget_prompt(self, _sender):
         """Show instructions for building/installing the widget."""
+        if bundled():
+            rumps.alert(title="Desktop Widget", message="The DMG includes the core menu bar app only. The optional widget is a separate source installation requiring macOS 14+ and Xcode.")
+            return
         widget_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "widget")
         build_script = os.path.join(widget_dir, "build_widget.sh")
         if os.path.isfile(build_script):
@@ -2472,6 +2505,7 @@ class TokenCoachApp(rumps.App):
                 counts = _ledger.ingest(conn, overrides=overrides, time_budget=30)
                 self._ledger_summary = _ledger.today_summary(conn)
                 if counts["complete"]:
+                    self._ledger_updated = time.time()
                     if time.time() - self._last_lesson_scan > 3600:
                         try:
                             from tokencoach.coach import detect_lessons
@@ -2520,6 +2554,8 @@ class TokenCoachApp(rumps.App):
                     path = write_report(conn, self.config)
                 finally:
                     conn.close()
+                _notify(APP_NAME, "Dashboard is read-only",
+                        "Local port 47821 is unavailable. Quit other TokenCoach copies or resolve the port conflict, then reopen the app.")
                 open_file(path, browser)
             except Exception:
                 log.exception("dashboard failed")
@@ -3128,10 +3164,27 @@ class TokenCoachApp(rumps.App):
     def _open_github(self, _sender):
         subprocess.Popen(["open", REPO_URL])
 
+    def _prepare_removal(self, _sender):
+        if rumps.alert(title="Prepare for Removal", message=(
+            "Remove TokenCoach's login/background agents and prompt/git hooks, then quit? "
+            "Your history, settings, backups and applied lesson blocks stay. "
+            "After it quits, move TokenCoach from Applications to Trash."
+        ), ok="Remove hooks and quit", cancel="Cancel") != 1:
+            return
+        try:
+            from tokencoach.__main__ import _cleanup
+            _cleanup(stop_main=False)
+        except Exception:
+            log.exception("removal cleanup failed")
+            rumps.alert(title="Cleanup incomplete", message="Some cleanup failed. Keep the app installed and see the TokenCoach log before retrying.")
+            return
+        _quit_app()
+
     def _about(self, _sender):
         resp = rumps.alert(
             title=f"About {APP_NAME}",
             message=(
+                f"{APP_NAME} {version_string()}\n\n"
                 f"{APP_NAME} tracks every Claude and ChatGPT prompt, coaches you to spend "
                 "less for the same results, and shows the quota you have left.\n\n"
                 "It began as a fork of AIQuotaBar by Toprak Yagcioglu, whose menu bar "
@@ -3399,7 +3452,13 @@ class TokenCoachApp(rumps.App):
             sender._menuitem.setState_(0)
             _notify(APP_NAME, "Removed from Login Items", "")
         else:
-            _add_login_item()
+            os.close(self._instance_fd)
+            self._instance_fd = None
+            if _add_login_item(handoff=True):
+                os._exit(0)  # launchd owns the next copy
+            self._instance_fd = acquire_instance(wait=3)
+            if self._instance_fd is None:
+                os._exit(0)
             self._login_item_cached = True
             sender._menuitem.setState_(1)
             _notify(APP_NAME, "Added to Login Items", "Will launch automatically on login")

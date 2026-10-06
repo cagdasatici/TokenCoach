@@ -435,6 +435,30 @@ class ListenerGuards(unittest.TestCase):
         self.assertEqual(self.req("/")[0], 403)
         self.assertEqual(self.req("/?t=wrong")[0], 403)
 
+    def test_data_refresh_requires_token_and_host(self):
+        self.assertEqual(self.req("/data")[0], 403)
+        self.assertEqual(self.req("/data?t=s3cret", headers={"Host":"evil.test"})[0], 403)
+        from unittest.mock import patch
+        from types import SimpleNamespace
+        self.srv.httpd.app = SimpleNamespace(_ledger_updated=123, _ledger_status="Still indexing")
+        with patch("tokencoach.ledger_report.dashboard_data", return_value={"generated":456, "facts":[]}):
+            code, body = self.req("/data?t=s3cret")
+        self.assertEqual(code, 200)
+        data = json.loads(body)
+        self.assertEqual(data["live"]["indexed_at"], 123)
+        self.assertEqual(data["live"]["index_status"], "Still indexing")
+
+    def test_restart_retains_address_and_conflict_is_explicit(self):
+        from tokencoach.server import DashboardServer
+        port = self.srv.httpd.server_address[1]
+        original = self.srv.url
+        with self.assertRaises(OSError):
+            DashboardServer("s3cret", port=port)
+        self.srv.stop()
+        self.srv = DashboardServer("s3cret", port=port).start()
+        self.assertEqual(self.srv.url, original)
+        self.assertEqual(self.req("/")[0], 403)
+
     def test_actions_need_header_token_and_right_host(self):
         self.assertEqual(self.req("/api/lesson/dismiss", "POST", body={})[0], 403)
         code, _ = self.req("/api/lesson/dismiss", "POST", {"X-TokenCoach": "s3cret", "Host": "evil.test"}, {})

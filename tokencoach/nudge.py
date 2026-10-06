@@ -289,6 +289,10 @@ CLAUDE_SETTINGS = os.path.expanduser("~/.claude/settings.json")
 
 
 def hook_command(install_dir: str) -> str:
+    from tokencoach.runtime import bundled
+    if bundled():
+        import shlex
+        return shlex.quote(sys.executable) + " --tokencoach_nudge.py"
     return f'"{install_python(install_dir)}" "{os.path.join(install_dir, HOOK_MARKER)}"'
 
 
