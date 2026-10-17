@@ -271,6 +271,50 @@ class DemoNeverRunsClaude(unittest.TestCase):
         run.assert_not_called()
 
 
+class ClaudeRunsOnSubscription(unittest.TestCase):
+    """Analyze and Improve must bill the person's Claude plan, not an API key
+    that happens to be exported in the environment."""
+    KEYS = {"ANTHROPIC_API_KEY": "sk-ant-test", "ANTHROPIC_AUTH_TOKEN": "tok-test"}
+
+    def run_with(self, extra_env, returncode=0, stdout="ok", stderr=""):
+        from tokencoach import optimizer
+        done = subprocess.CompletedProcess([], returncode, stdout, stderr)
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("TOKENCOACH_DEMO", "TOKENCOACH_USE_API_KEY")}
+        env.update(extra_env)
+        with tempfile.TemporaryDirectory() as d, \
+                patch.dict(os.environ, env, clear=True), \
+                patch.object(optimizer, "OPTIMIZER_DIR", d), \
+                patch.object(optimizer, "find_claude_cli", return_value="/bin/echo"), \
+                patch.object(optimizer.subprocess, "run", return_value=done) as run:
+            try:
+                optimizer.run_claude("hi")
+                err = None
+            except RuntimeError as e:
+                err = str(e)
+        return run.call_args.kwargs["env"], err
+
+    def test_api_keys_are_not_passed_to_claude(self):
+        env, err = self.run_with(self.KEYS)
+        self.assertIsNone(err)
+        for k in self.KEYS:
+            self.assertFalse(k in env, f"{k} was passed to claude")   # never print env values
+
+    def test_opt_in_keeps_api_keys(self):
+        env, _ = self.run_with({**self.KEYS, "TOKENCOACH_USE_API_KEY": "1"})
+        for k, v in self.KEYS.items():
+            self.assertEqual(env[k], v)
+
+    def test_failure_after_dropping_a_key_explains_the_opt_in(self):
+        _, err = self.run_with(self.KEYS, returncode=1, stdout="", stderr="Not logged in")
+        self.assertIn("Not logged in", err)
+        self.assertIn("TOKENCOACH_USE_API_KEY=1", err)
+
+    def test_failure_without_a_key_has_no_hint(self):
+        _, err = self.run_with({}, returncode=1, stdout="", stderr="boom")
+        self.assertEqual(err, "boom")
+
+
 class AutoUpdate(unittest.TestCase):
     def git(self, cwd, *args):
         return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd,

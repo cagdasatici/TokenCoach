@@ -138,8 +138,26 @@ def latest_report() -> str | None:
     return files[-1] if files else None
 
 
+# Claude Code prefers these over the person's subscription login, so an exported
+# key would silently move Analyze and Improve onto pay-as-you-go API billing.
+API_KEY_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+USE_API_KEY_VAR = "TOKENCOACH_USE_API_KEY"     # "1" keeps them, for API-only setups
+
+
+def claude_env() -> tuple[dict, list[str]]:
+    """Environment for our `claude` runs, and the API key variables dropped from it."""
+    env = dict(os.environ)
+    dropped = []
+    if env.get(USE_API_KEY_VAR) != "1":
+        dropped = [k for k in API_KEY_VARS if env.pop(k, None) is not None]
+    env["PATH"] = env.get("PATH", "") + ":/opt/homebrew/bin:/usr/local/bin"
+    env["TOKENCOACH_INTERNAL"] = "1"      # our own runs: no nudges
+    return env, dropped
+
+
 def run_claude(prompt: str, model: str = OPTIMIZER_MODEL, timeout: int = TIMEOUT_SECS) -> str:
     """One tool-less `claude -p` call from the optimizer folder. Returns stdout.
+    Runs on the person's Claude subscription login, never an exported API key.
     Raises RuntimeError with a readable message on failure."""
     from tokencoach.config import DEMO
     if DEMO or os.environ.get("TOKENCOACH_DEMO") == "1":
@@ -149,16 +167,18 @@ def run_claude(prompt: str, model: str = OPTIMIZER_MODEL, timeout: int = TIMEOUT
     if not cli:
         raise RuntimeError("Claude Code CLI not found. Install it, then try again.")
     os.makedirs(OPTIMIZER_DIR, exist_ok=True)
-    env = dict(os.environ)
-    env["PATH"] = env.get("PATH", "") + ":/opt/homebrew/bin:/usr/local/bin"
-    env["TOKENCOACH_INTERNAL"] = "1"      # our own runs: no nudges
+    env, dropped = claude_env()
     proc = subprocess.run(
         [cli, "-p", "--model", model, "--tools", "", "--strict-mcp-config"],
         input=prompt, capture_output=True, text=True, cwd=OPTIMIZER_DIR,
         timeout=timeout, env=env,
     )
     if proc.returncode != 0 or not proc.stdout.strip():
-        raise RuntimeError((proc.stderr or proc.stdout or "claude exited with no output").strip()[:400])
+        msg = (proc.stderr or proc.stdout or "claude exited with no output").strip()[:400]
+        if dropped:
+            msg += (f"\n\nTokenCoach runs Claude on your subscription and ignored {', '.join(dropped)}. "
+                    f"Sign in with `claude` then /login, or set {USE_API_KEY_VAR}=1 to bill the API key.")
+        raise RuntimeError(msg)
     return proc.stdout
 
 
