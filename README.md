@@ -266,7 +266,9 @@ like its closest published sibling and labelled *estimated*. Override anything i
   your costliest prompts (or the one prompt) to Claude through *your own* `claude` CLI, running
   Sonnet 5 with all tools off. That counts against your Claude plan like any Claude Code prompt,
   and TokenCoach tracks its API-equivalent cost like any other session. Cost varies with input
-  and output size.
+  and output size. TokenCoach removes `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` from these
+  runs so an exported key cannot quietly move them onto API billing; set
+  `TOKENCOACH_USE_API_KEY=1` if you want them billed to your key instead.
 - **What changes on your Mac:** a login agent, a small watchdog that restarts the app if it
   dies, the Claude Code hook (a backup of `~/.claude/settings.json` is written first, and you
   can turn nudges off in the menu), lesson blocks you choose to apply, and a git hook in each

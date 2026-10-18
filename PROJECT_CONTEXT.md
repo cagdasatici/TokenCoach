@@ -43,6 +43,8 @@ A navigation snapshot, not a replacement for requirements or live evidence. Upda
 
 ## Notes
 
+- 2026-10-17 billing: Analyze and Improve (`optimizer.run_claude`) drop `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` before calling `claude -p`, so an exported key cannot move them from the person's plan to API billing. `TOKENCOACH_USE_API_KEY=1` keeps the keys; a failed run that dropped one says so. Tests in `tests/test_release.py` (`ClaudeRunsOnSubscription`).
+
 - 2026-10-06 branding: original mint/ivory ribbon-diamond artwork in `assets/tokencoach-logo.png`, small dashboard variant and matching GitHub social card. GitHub repository social preview uploaded and verified after reload; README, self-contained dashboard header/favicon and future packaged app icon use the shared art. Full suite: 312 tests pass (existing non-failing log warning); diff whitespace check passes. Branding and the Homebrew-first release scope are included in the next signed commit.
 
 - 2026-10-05 PS2 widget defect: old extension survived bundle replacement and served stale values despite a correct cache. Owner confirmed recovery after targeted extension retirement and host restart. Builder now retires only the installed extension before host reload; executable regression coverage added in `tests/test_release.py`. Fixed widget build succeeds; final candidate and ongoing refresh acceptance remain open.
