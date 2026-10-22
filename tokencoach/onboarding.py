@@ -32,3 +32,22 @@ def plan_steps(codex_found: bool, nudges_on: bool) -> list[str]:
         steps.append("nudges")
     steps += ["connect", "done"]
     return steps
+
+
+def connect_choices(bundled: bool) -> dict:
+    """The Connect Claude dialog's buttons. Following the browser's login needs
+    macOS to let TokenCoach read another app's data. Only the downloaded app
+    asks for that as itself; a script install runs as the shared Python, and
+    granting it there would let every Python script read browser cookies."""
+    if bundled:
+        return {"ok": "Use my browser\u2019s login", "cancel": "Skip",
+                "other": "Sign in to Claude\u2026", 1: "browser", -1: "signin"}
+    return {"ok": "Sign in to Claude\u2026", "cancel": "Skip", "other": None, 1: "signin"}
+
+
+def browser_access_outcome(found: bool, blocked: list[str]) -> str:
+    """After a guided browser lookup: 'ok', 'blocked' (macOS kept us out of a
+    browser, so the person must allow it) or 'none' (readable, not signed in)."""
+    if found:
+        return "ok"
+    return "blocked" if blocked else "none"

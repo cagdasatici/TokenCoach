@@ -2270,6 +2270,8 @@ class TokenCoachApp(rumps.App):
         items.append(None)
         items.append(rumps.MenuItem("Auto-detect from Browser", callback=self._auto_detect_menu))
         items.append(rumps.MenuItem("Sign in to Claude\u2026", callback=self._sign_in))
+        if bundled():
+            items.append(rumps.MenuItem("Use My Browser\u2019s Login\u2026", callback=self._follow_browser_login))
         items.append(rumps.MenuItem("Setup Guide\u2026", callback=self._setup_guide))
         items.append(rumps.MenuItem("Paste Session Key\u2026", callback=self._set_cookie))
         items.append(rumps.MenuItem("Paste Cookie from Clipboard", callback=self._paste_cookie))
@@ -2483,6 +2485,7 @@ class TokenCoachApp(rumps.App):
         from tokencoach import nudge
         steps = _onboarding.plan_steps(_providers.codex_signin_available(), nudge.is_installed())
         sign_in = False     # opened after the last dialog, which would otherwise sit modal over it
+        follow_browser = False
         for step in steps:
             if step == "welcome":
                 if not rumps.alert(
@@ -2512,37 +2515,36 @@ class TokenCoachApp(rumps.App):
                     except Exception:
                         log.exception("setup guide: enabling nudges failed")
             elif step == "connect":
+                opts = _onboarding.connect_choices(bundled())
                 choice = rumps.alert(
                     title="Connect Claude",
-                    message=("Sign in to claude.ai in a small window to see your remaining quota. "
-                             "Skip it to track local Claude Code usage only."),
-                    ok="Sign in to Claude\u2026", cancel="Skip",
-                    other="Use my browser\u2019s login instead",
+                    message=(("Use the claude.ai login you already have in your browser, or sign "
+                              "in once in a small window. " if bundled() else
+                              "Sign in to claude.ai in a small window to see your remaining quota. ")
+                             + "Skip it to track local Claude Code usage only."),
+                    ok=opts["ok"], cancel=opts["cancel"], other=opts["other"],
                 )
-                if choice == 1:
-                    sign_in = True
-                elif choice == -1 and rumps.alert(
-                    title="Use my browser\u2019s login",
-                    message=("TokenCoach will look for a claude.ai login in your browsers. macOS may "
-                             "ask for Keychain permission; you can decline and still track local usage."),
-                    ok="Look for it", cancel="Cancel",
-                ) == 1:
-                    self._auto_detect_menu(None)
+                sign_in = opts.get(choice) == "signin"
+                follow_browser = opts.get(choice) == "browser"
             elif step == "done":
                 rumps.alert(
                     title="All set",
-                    message=(("Next, sign in to claude.ai in the window that opens. " if sign_in else "")
+                    message=(("Next, sign in to claude.ai in the window that opens. " if sign_in else
+                              "Next, allow TokenCoach to read your browser\u2019s login. " if follow_browser
+                              else "")
                              + "Look for \u25c6 in your menu bar and click it any time. "
                              "To run this guide again, choose Setup Guide\u2026 in the settings menu."
                              + (" Use Launch at Login in Settings for automatic startup."
                                 if bundled() else "")),
-                    ok="Continue" if sign_in else "Done",
+                    ok="Continue" if sign_in or follow_browser else "Done",
                 )
                 with self._config_lock:
                     self.config["onboarding_done"] = _onboarding.ONBOARDING_VERSION
                     save_config(self.config)
         if sign_in:
             self._sign_in(None)
+        elif follow_browser:
+            self._follow_browser_login(None)
 
     def _open_widget_settings(self, _sender):
         """Open the widget host app (shows add-widget instructions)."""
@@ -3644,6 +3646,75 @@ class TokenCoachApp(rumps.App):
         else:
             from PyObjCTools import AppHelper
             AppHelper.callAfter(self._explain_no_session, list(_providers.last_blocked_browsers))
+
+    # -- following the browser's login (downloaded app only) -------------------
+
+    def _follow_browser_login(self, _sender):
+        """Main thread: guide the person through letting TokenCoach.app read their
+        browser's claude.ai login. Only offered in the app build: macOS then asks
+        about TokenCoach itself, not the Python every script on the Mac shares."""
+        if not bundled() or not _BROWSER_COOKIE3_OK:
+            self._sign_in(None)
+            return
+        if rumps.alert(
+            title="Use your browser\u2019s Claude login",
+            message=("TokenCoach can use the claude.ai login you already have in your browser, "
+                     "so you never sign in separately.\n\n"
+                     "macOS will ask two things. Click Allow for both:\n"
+                     "  1. \u201cTokenCoach would like to access data from other apps\u201d\n"
+                     "  2. A password prompt for your browser\u2019s \u201cSafe Storage\u201d "
+                     "(Chrome, Arc, Brave, Edge)\n\n"
+                     "TokenCoach only reads the claude.ai and chatgpt.com sign-ins, and only now "
+                     "or when your session expires."),
+            ok="Continue", cancel="Cancel",
+        ) != 1:
+            return
+        threading.Thread(target=self._follow_browser_lookup, daemon=True).start()
+
+    def _follow_browser_lookup(self):
+        """Background: look, then report on the main thread."""
+        from PyObjCTools import AppHelper
+        _providers.forget_cookie_lookup()
+        try:
+            cookie_str = _auto_detect_cookies(require_valid=True)
+        except Exception:
+            log.exception("browser login lookup failed")
+            cookie_str = None
+        AppHelper.callAfter(self._follow_browser_result, cookie_str,
+                            list(_providers.last_blocked_browsers))
+
+    def _follow_browser_result(self, cookie_str, blocked: list[str]):
+        """Main thread: finish, or say exactly what to do next."""
+        outcome = _onboarding.browser_access_outcome(bool(cookie_str), blocked)
+        if outcome == "ok":
+            self._signed_in(cookie_str)
+            return
+        if outcome == "blocked":
+            names = ", ".join(b.title() for b in blocked)
+            choice = rumps.alert(
+                title="macOS is still blocking TokenCoach",
+                message=(f"TokenCoach can\u2019t read {names} yet.\n\n"
+                         "Open Privacy & Security \u2192 Full Disk Access, turn on TokenCoach, "
+                         "then come back and click Check Again."),
+                ok="Open Settings", cancel="Use Sign-in Window", other="Check Again",
+            )
+        else:
+            choice = rumps.alert(
+                title="No Claude login found in your browsers",
+                message=("Sign in at claude.ai in your browser, then click Check Again. "
+                         "Or sign in once in TokenCoach\u2019s own window."),
+                ok="Check Again", cancel="Use Sign-in Window",
+            )
+            choice = -1 if choice == 1 else choice
+        if choice == 1:
+            subprocess.Popen(["open",
+                              "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"])
+            # Settings takes focus; ask again so the person can check once done.
+            self._follow_browser_result(None, blocked)
+        elif choice == -1:
+            threading.Thread(target=self._follow_browser_lookup, daemon=True).start()
+        else:
+            self._sign_in(None)
 
     def _explain_no_session(self, blocked: list[str]):
         """Main thread: auto-detect found nothing; say why and offer the sign-in window."""

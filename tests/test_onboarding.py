@@ -41,5 +41,35 @@ class PlanStepsTests(unittest.TestCase):
         self.assertEqual(plan_steps(True, False)[-2:], ["connect", "done"])
 
 
+class BrowserLoginTests(unittest.TestCase):
+    """Following the browser's login needs macOS to let TokenCoach read other
+    apps' data. A script install runs as the shared Python, so it is offered
+    only in the downloaded app, where macOS asks about TokenCoach itself."""
+
+    def test_only_the_app_build_offers_the_browser(self):
+        from tokencoach.onboarding import connect_choices
+        self.assertEqual(connect_choices(True)[1], "browser")
+        self.assertEqual(connect_choices(True)[-1], "signin")
+        script = connect_choices(False)
+        self.assertNotIn("browser", script.values())
+        self.assertIsNone(script["other"])
+
+    def test_outcomes(self):
+        from tokencoach.onboarding import browser_access_outcome
+        self.assertEqual(browser_access_outcome(True, ["safari"]), "ok")
+        self.assertEqual(browser_access_outcome(False, ["chrome"]), "blocked")
+        self.assertEqual(browser_access_outcome(False, []), "none")
+
+    def test_guided_lookup_never_takes_a_dead_cookie(self):
+        from unittest.mock import patch
+        from tokencoach import providers
+        with patch.object(providers, "_BROWSER_COOKIE3_OK", True), \
+             patch.object(providers, "_warn_keychain_once"), \
+             patch.object(providers, "_run_cookie_detection", return_value=["sessionKey=dead"]), \
+             patch.object(providers, "_claude_cookie_is_valid", return_value=False):
+            self.assertIsNone(providers._auto_detect_cookies(require_valid=True))
+            self.assertEqual(providers._auto_detect_cookies(), "sessionKey=dead")
+
+
 if __name__ == "__main__":
     unittest.main()

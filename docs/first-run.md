@@ -22,7 +22,7 @@ skipped, and nothing is changed until you choose it:
 1. **Welcome:** what TokenCoach shows. **Get started** or **Later** (Later brings it back next launch).
 2. **ChatGPT / Codex found:** shown only if you are signed in to the Codex CLI; TokenCoach reads that sign-in without prompts.
 3. **Claude Code nudges:** shown only if they are off; **Turn on** or **Skip**.
-4. **Connect Claude:** **Sign in to Claude…** opens a small sign-in window (no macOS permissions needed). **Skip** keeps local-only tracking. **Use my browser's login instead** looks for an existing browser login and may ask for Keychain permission; you can decline.
+4. **Connect Claude:** **Sign in to Claude…** opens a small sign-in window (no macOS permissions needed). **Skip** keeps local-only tracking. In the downloaded TokenCoach.app, **Use my browser's login** is the first choice: it walks through the two macOS prompts (access to other apps' data, then the browser's Keychain "Safe Storage") and, if macOS still blocks it, opens Privacy & Security → Full Disk Access with a **Check Again** button. Script and Homebrew installs don't offer it: they run as the shared Python, and allowing that would let every Python script read browser cookies. Their sign-in window keeps its own login, so signing in again is usually one click.
 5. **All set:** look for ◆ in your menu bar and click it any time.
 
 The guide shows once, and not at all for people who already had a session or finished

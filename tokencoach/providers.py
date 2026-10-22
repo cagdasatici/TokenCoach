@@ -900,7 +900,7 @@ def _claude_cookie_is_valid(cookie_str: str) -> bool:
         return False
 
 
-def _auto_detect_cookies() -> str | None:
+def _auto_detect_cookies(require_valid: bool = False) -> str | None:
     """Detect a *valid* claude.ai session cookie from the browser.
 
     Returns the first candidate (across all logged-in browsers) that actually
@@ -921,8 +921,9 @@ def _auto_detect_cookies() -> str | None:
     # Nothing validated (all logged out / expired). Fall back to the
     # best-ranked candidate so the existing 401/403 handling can surface a
     # "session expired" prompt to the user.
+    # require_valid: the caller is about to say "found it", so a dead one won't do.
     log.debug("no claude cookie candidate validated; using best-ranked")
-    return candidates[0]
+    return None if require_valid else candidates[0]
 
 
 def _auto_detect_chatgpt_cookies(exclude: set[str] | None = None) -> str | None:
