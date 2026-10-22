@@ -10,6 +10,7 @@ import tempfile
 import time
 import threading
 import urllib.parse
+from collections.abc import Mapping
 from datetime import datetime, timezone, timedelta
 
 from tokencoach.config import (
@@ -976,6 +977,15 @@ def _notify(title: str, subtitle: str, message: str = "", data: dict | None = No
         rumps.notification(title, subtitle, message, data=data)
     except Exception as e:
         log.debug("notification suppressed: %s", e)
+
+
+def _notification_action(info) -> str | None:
+    """The "action" a clicked notification carried. rumps hands the handler a
+    Notification (a Mapping, not a dict) whose payload is its `.data`."""
+    data = getattr(info, "data", info)
+    if isinstance(data, Mapping):
+        return data.get("action")
+    return None
 
 
 def _show_text(title: str, text: str):
@@ -3417,7 +3427,7 @@ class TokenCoachApp(rumps.App):
 
     def _on_notification_click(self, info):
         """Main thread: a notification was clicked."""
-        if isinstance(info, dict) and info.get("action") == "signin":
+        if _notification_action(info) == "signin":
             self._sign_in(None)
 
     def _sign_in(self, _sender):

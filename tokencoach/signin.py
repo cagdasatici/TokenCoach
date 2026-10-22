@@ -86,12 +86,24 @@ class _SignInWindow:
         self._on_fallback = on_browser_fallback
         self._done = False
         self._checking = False
+        self._rejected = None   # a stale session left in the store: don't re-ask claude.ai every tick
         self._timer = None
         owner = self
 
-        class _Delegate(Foundation.NSObject, protocols=[objc.protocolNamed("WKNavigationDelegate")]):
+        class _Delegate(Foundation.NSObject, protocols=[objc.protocolNamed("WKNavigationDelegate"),
+                                                        objc.protocolNamed("WKUIDelegate")]):
             def webView_didFinishNavigation_(self, _wv, _nav):
                 owner.poll()
+
+            def webView_createWebViewWithConfiguration_forNavigationAction_windowFeatures_(
+                    self, wv, _cfg, action, _features):
+                # Sign-in pop-ups (window.open) would otherwise silently do nothing.
+                url = action.request().URL()
+                if is_google_sso_url(str(url.absoluteString()) if url else ""):
+                    owner.show_google_notice()
+                else:
+                    wv.loadRequest_(action.request())
+                return None
 
             def webView_decidePolicyForNavigationAction_decisionHandler_(self, _wv, action, handler):
                 url = action.request().URL()
@@ -143,6 +155,7 @@ class _SignInWindow:
             Foundation.NSMakeRect(0, 0, bounds.size.width, bounds.size.height), cfg)
         self._web.setAutoresizingMask_(AppKit.NSViewWidthSizable | AppKit.NSViewHeightSizable)
         self._web.setNavigationDelegate_(self._delegate)
+        self._web.setUIDelegate_(self._delegate)
         content.addSubview_(self._web)
         content.addSubview_(self._bar)
 
@@ -184,7 +197,7 @@ class _SignInWindow:
             # WebKit calls this on the main thread.
             triples = [(str(c.name()), str(c.domain()), str(c.value())) for c in (cookies or [])]
             cookie_str = build_cookie_string(triples)
-            if not cookie_str:
+            if not cookie_str or cookie_str == self._rejected:
                 self._checking = False
                 return
             threading.Thread(target=self._validate, args=(cookie_str,), daemon=True).start()
@@ -197,11 +210,14 @@ class _SignInWindow:
         from tokencoach.providers import _claude_cookie_is_valid
         ok = _claude_cookie_is_valid(cookie_str)
         log.debug("sign-in window: session cookie valid=%s", ok)
-        AppHelper.callAfter(self._finish, cookie_str if ok else None)
+        AppHelper.callAfter(self._finish, cookie_str, ok)
 
-    def _finish(self, cookie_str):
+    def _finish(self, cookie_str, ok):
         self._checking = False
-        if not cookie_str or self._done:
+        if not ok:
+            self._rejected = cookie_str
+            return
+        if self._done:
             return
         self._done = True
         cb = self._on_success

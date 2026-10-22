@@ -1,3 +1,9 @@
+import os as _os
+import tempfile as _tempfile
+
+# Isolate from the real data folder before anything imports tokencoach.
+_os.environ.setdefault("TOKENCOACH_DATA_DIR", _tempfile.mkdtemp(prefix="tokencoach-test-"))
+
 import unittest
 
 from tokencoach.providers import normalize_cookie_input
@@ -44,6 +50,17 @@ class GoogleSsoTests(unittest.TestCase):
         self.assertFalse(is_google_sso_url("https://claude.ai/login"))
         self.assertFalse(is_google_sso_url("https://evil.com/accounts.google.com"))
         self.assertFalse(is_google_sso_url(""))
+
+
+class NotificationClickTests(unittest.TestCase):
+    """rumps hands the click handler a Notification (a Mapping, not a dict);
+    an isinstance(dict) check made "click to sign in again" do nothing."""
+
+    def test_reads_the_action_from_a_rumps_notification(self):
+        from rumps.notifications import Notification
+        from tokencoach.ui import _notification_action
+        self.assertEqual(_notification_action(Notification(None, {"action": "signin"})), "signin")
+        self.assertIsNone(_notification_action(Notification(None, None)))
 
 
 if __name__ == "__main__":
