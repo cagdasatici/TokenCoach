@@ -2424,7 +2424,10 @@ class TokenCoachApp(rumps.App):
         # Decide before the old welcome flags below are set, or a new person
         # would count as an existing one.
         guide = _onboarding.should_show(self.config, demo=DEMO)
-        if bundled() and not self.config.get("bundle_welcome"):
+        if bundled() and not self.config.get("bundle_welcome") and guide:
+            self.config["bundle_welcome"] = True      # the guide is the welcome now
+            save_config(self.config)
+        elif bundled() and not self.config.get("bundle_welcome"):
             rumps.alert(title="Welcome to TokenCoach", message=(
                 "Find the ◆ in the menu bar and use Open Dashboard. Quota needs a signed-in account; "
                 "local usage appears when Claude Code, Cowork or Codex logs are present. Browser access "
@@ -2479,6 +2482,7 @@ class TokenCoachApp(rumps.App):
         """Short guided sequence of native dialogs; every step can be skipped."""
         from tokencoach import nudge
         steps = _onboarding.plan_steps(_providers.codex_signin_available(), nudge.is_installed())
+        sign_in = False     # opened after the last dialog, which would otherwise sit modal over it
         for step in steps:
             if step == "welcome":
                 if not rumps.alert(
@@ -2516,7 +2520,7 @@ class TokenCoachApp(rumps.App):
                     other="Use my browser\u2019s login instead",
                 )
                 if choice == 1:
-                    self._sign_in(None)
+                    sign_in = True
                 elif choice == -1 and rumps.alert(
                     title="Use my browser\u2019s login",
                     message=("TokenCoach will look for a claude.ai login in your browsers. macOS may "
@@ -2527,13 +2531,18 @@ class TokenCoachApp(rumps.App):
             elif step == "done":
                 rumps.alert(
                     title="All set",
-                    message=("Look for \u25c6 in your menu bar and click it any time. "
-                             "To run this guide again, choose Setup Guide\u2026 in the settings menu."),
-                    ok="Done",
+                    message=(("Next, sign in to claude.ai in the window that opens. " if sign_in else "")
+                             + "Look for \u25c6 in your menu bar and click it any time. "
+                             "To run this guide again, choose Setup Guide\u2026 in the settings menu."
+                             + (" Use Launch at Login in Settings for automatic startup."
+                                if bundled() else "")),
+                    ok="Continue" if sign_in else "Done",
                 )
                 with self._config_lock:
                     self.config["onboarding_done"] = _onboarding.ONBOARDING_VERSION
                     save_config(self.config)
+        if sign_in:
+            self._sign_in(None)
 
     def _open_widget_settings(self, _sender):
         """Open the widget host app (shows add-widget instructions)."""
