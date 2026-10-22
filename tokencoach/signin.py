@@ -53,6 +53,15 @@ def available() -> bool:
 _controller = None      # the one open window, if any
 
 
+def _guarded(fn, *args):
+    """Run a WebKit/AppKit callback. An exception escaping one is uncaught
+    inside Cocoa and terminates the whole menubar app, so log it instead."""
+    try:
+        return fn(*args)
+    except Exception:
+        log.exception("sign-in window callback failed")
+
+
 def open_window(on_success, on_browser_fallback=None) -> bool:
     """Show (or raise) the sign-in window. Call on the main thread.
 
@@ -93,34 +102,31 @@ class _SignInWindow:
         class _Delegate(Foundation.NSObject, protocols=[objc.protocolNamed("WKNavigationDelegate"),
                                                         objc.protocolNamed("WKUIDelegate")]):
             def webView_didFinishNavigation_(self, _wv, _nav):
-                owner.poll()
+                _guarded(owner.poll)
 
             def webView_createWebViewWithConfiguration_forNavigationAction_windowFeatures_(
                     self, wv, _cfg, action, _features):
                 # Sign-in pop-ups (window.open) would otherwise silently do nothing.
-                url = action.request().URL()
-                if is_google_sso_url(str(url.absoluteString()) if url else ""):
-                    owner.show_google_notice()
-                else:
-                    wv.loadRequest_(action.request())
+                _guarded(owner.open_popup, wv, action)
                 return None
 
-            def webView_decidePolicyForNavigationAction_decisionHandler_(self, _wv, action, handler):
-                url = action.request().URL()
-                if is_google_sso_url(str(url.absoluteString()) if url else ""):
-                    handler(WebKit.WKNavigationActionPolicyCancel)
-                    owner.show_google_notice()
-                else:
-                    handler(WebKit.WKNavigationActionPolicyAllow)
+            # Not decidePolicyForNavigationAction: PyObjC can't call its
+            # decisionHandler block ("cannot call block without a signature"), and
+            # that uncaught exception inside WebKit killed the whole app.
+            def webView_didStartProvisionalNavigation_(self, _wv, _nav):
+                _guarded(owner.check_url)
+
+            def webView_didReceiveServerRedirectForProvisionalNavigation_(self, _wv, _nav):
+                _guarded(owner.check_url)
 
             def windowWillClose_(self, _note):
-                owner.close()
+                _guarded(owner.close)
 
             def tick_(self, _timer):
-                owner.poll()
+                _guarded(owner.poll)
 
             def useBrowser_(self, _sender):
-                owner.use_browser()
+                _guarded(owner.use_browser)
 
         self._delegate = _Delegate.alloc().init()
         style = (AppKit.NSWindowStyleMaskTitled | AppKit.NSWindowStyleMaskClosable
@@ -173,6 +179,23 @@ class _SignInWindow:
         AppKit.NSApp.activateIgnoringOtherApps_(True)
         self._window.makeKeyAndOrderFront_(None)
 
+    def open_popup(self, wv, action):
+        url = action.request().URL()
+        if is_google_sso_url(str(url.absoluteString()) if url else ""):
+            self.show_google_notice()
+        else:
+            wv.loadRequest_(action.request())
+
+    def check_url(self):
+        """Google refuses embedded sign-in: go back to claude.ai and explain."""
+        url = self._web.URL()
+        if is_google_sso_url(str(url.absoluteString()) if url else ""):
+            import Foundation
+            self._web.stopLoading()
+            self._web.loadRequest_(Foundation.NSURLRequest.requestWithURL_(
+                Foundation.NSURL.URLWithString_(LOGIN_URL)))
+            self.show_google_notice()
+
     def show_google_notice(self):
         import Foundation
         h = self._bar_height
@@ -193,14 +216,22 @@ class _SignInWindow:
             return
         self._checking = True
 
-        def handler(cookies):
-            # WebKit calls this on the main thread.
+        def read(cookies):
             triples = [(str(c.name()), str(c.domain()), str(c.value())) for c in (cookies or [])]
             cookie_str = build_cookie_string(triples)
             if not cookie_str or cookie_str == self._rejected:
                 self._checking = False
                 return
             threading.Thread(target=self._validate, args=(cookie_str,), daemon=True).start()
+
+        def handler(cookies):
+            # WebKit calls this on the main thread. Uncaught, an error here would end
+            # the app; and _checking must be reset or every later poll is skipped.
+            try:
+                read(cookies)
+            except Exception:
+                log.exception("sign-in window: reading cookies failed")
+                self._checking = False
 
         store = self._web.configuration().websiteDataStore().httpCookieStore()
         store.getAllCookies_(handler)
@@ -210,7 +241,7 @@ class _SignInWindow:
         from tokencoach.providers import _claude_cookie_is_valid
         ok = _claude_cookie_is_valid(cookie_str)
         log.debug("sign-in window: session cookie valid=%s", ok)
-        AppHelper.callAfter(self._finish, cookie_str, ok)
+        AppHelper.callAfter(_guarded, self._finish, cookie_str, ok)
 
     def _finish(self, cookie_str, ok):
         self._checking = False

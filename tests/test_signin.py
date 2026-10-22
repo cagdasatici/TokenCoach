@@ -7,7 +7,7 @@ _os.environ.setdefault("TOKENCOACH_DATA_DIR", _tempfile.mkdtemp(prefix="tokencoa
 import unittest
 
 from tokencoach.providers import normalize_cookie_input
-from tokencoach.signin import build_cookie_string, is_google_sso_url
+from tokencoach.signin import available, build_cookie_string, is_google_sso_url
 
 
 class NormalizeCookieInputTests(unittest.TestCase):
@@ -50,6 +50,41 @@ class GoogleSsoTests(unittest.TestCase):
         self.assertFalse(is_google_sso_url("https://claude.ai/login"))
         self.assertFalse(is_google_sso_url("https://evil.com/accounts.google.com"))
         self.assertFalse(is_google_sso_url(""))
+
+
+_LOAD_A_PAGE = r"""
+import AppKit
+from PyObjCTools import AppHelper
+from tokencoach import signin
+AppKit.NSApplication.sharedApplication().setActivationPolicy_(AppKit.NSApplicationActivationPolicyProhibited)
+w = signin._SignInWindow(lambda c: None, None)
+seen = []
+orig = w.poll
+w.poll = lambda: (seen.append(1), orig())
+w._web.loadHTMLString_baseURL_("<p>hi</p>", None)
+def stop():
+    # poll() leaves _checking set until WebKit calls the cookie block back
+    print("PAGE-OK" if seen and not w._checking else "PAGE-MISSING", flush=True)
+    w.close(); AppHelper.stopEventLoop()
+AppHelper.callLater(3.0, stop)
+AppHelper.runEventLoop(installInterrupt=True)
+"""
+
+
+@unittest.skipUnless(available(), "WebKit not installed")
+class RealWebViewTests(unittest.TestCase):
+    """Found when first trying a real sign-in: a navigation delegate callback
+    whose block PyObjC could not call crashed the whole app on the first page
+    load. This loads a page in a real WKWebView, in a child process."""
+
+    def test_a_page_loads_without_crashing(self):
+        import subprocess
+        import sys
+        root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+        r = subprocess.run([sys.executable, "-c", _LOAD_A_PAGE], capture_output=True, text=True,
+                           timeout=60, cwd=root, env=dict(_os.environ))
+        self.assertIn("PAGE-OK", r.stdout, r.stderr[-800:])
+        self.assertEqual(r.returncode, 0, r.stderr[-800:])
 
 
 class NotificationClickTests(unittest.TestCase):
