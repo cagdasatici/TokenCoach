@@ -90,6 +90,25 @@ def parse_cookie_string(raw: str) -> dict:
     return cookies
 
 
+def normalize_cookie_input(raw: str) -> str:
+    """Turn whatever the person pasted into a 'sessionKey=...; ...' string.
+
+    Accepts a bare sessionKey value, 'sessionKey=...', or a whole 'Cookie:'
+    header line (possibly spread over lines). Cloudflare cookies are dropped:
+    they are bound to the browser's fingerprint and cause 403s here.
+    Returns '' when nothing usable was pasted.
+    """
+    raw = " ".join((raw or "").split())
+    if raw.lower().startswith("cookie:"):
+        raw = raw[len("cookie:"):].strip()
+    raw = raw.strip("\"' ")
+    if not raw:
+        return ""
+    cookies = _strip_cf_cookies(parse_cookie_string(raw))
+    cookies = {k: v for k, v in cookies.items() if k and v}
+    return "; ".join(f"{k}={v}" for k, v in cookies.items())
+
+
 def _strip_cf_cookies(cookies: dict) -> dict:
     return {k: v for k, v in cookies.items() if k not in CF_COOKIE_KEYS}
 

@@ -23,7 +23,7 @@ from tokencoach.config import (
 from tokencoach.providers import (
     LimitRow, UsageData, ProviderData, parse_usage, fetch_raw,
     fetch_claude_code_stats, fetch_chatgpt, PROVIDER_REGISTRY, COOKIE_PROVIDERS,
-    CurlHTTPError, parse_cookie_string,
+    CurlHTTPError, parse_cookie_string, normalize_cookie_input, _claude_cookie_is_valid,
     _auto_detect_cookies, _auto_detect_chatgpt_cookies,
     _warn_keychain_once, _fmt_reset, _BROWSER_COOKIE3_OK,
 )
@@ -38,6 +38,7 @@ from tokencoach.widget import _write_widget_cache, _is_widget_installed
 from tokencoach.update import _check_and_apply_update, _restart_app
 from tokencoach import ledger as _ledger
 from tokencoach import providers as _providers
+from tokencoach import signin as _signin
 from tokencoach import health
 from tokencoach.version import version_string
 from tokencoach.runtime import bundled, launch_args, acquire_instance
@@ -967,11 +968,12 @@ def _clipboard_text() -> str:
 
 # -- notification helpers ------------------------------------------------------
 
-def _notify(title: str, subtitle: str, message: str = ""):
+def _notify(title: str, subtitle: str, message: str = "", data: dict | None = None):
     """rumps.notification wrapper -- silently swallows if the notification
-    center is unavailable (e.g. missing Info.plist in dev environments)."""
+    center is unavailable (e.g. missing Info.plist in dev environments).
+    `data` comes back to the @rumps.notifications handler when it is clicked."""
     try:
-        rumps.notification(title, subtitle, message)
+        rumps.notification(title, subtitle, message, data=data)
     except Exception as e:
         log.debug("notification suppressed: %s", e)
 
@@ -1895,6 +1897,7 @@ class TokenCoachApp(rumps.App):
 
         super().__init__("\u25c6", quit_button=None)
         self.config = load_config()
+        rumps.notifications(self._on_notification_click)
         legacy_config_changed = self.config.pop("copilot_cookies", None) is not None
         legacy_config_changed |= self.config.pop("cursor_cookies", None) is not None
         notifications = self.config.get("notifications")
@@ -2050,7 +2053,10 @@ class TokenCoachApp(rumps.App):
         items.append(_section_header_mi("  Claude", "claude_icon.png", "#D97757"))
 
         if data is None or not any([data.session, data.weekly_all, data.weekly_sonnet]):
-            items.append(_mi("  No data \u2014 click Auto-detect from Browser"))
+            if self.config.get("cookie_str"):
+                items.append(_mi("  No data yet"))
+            else:
+                items.append(_mi("  Not signed in \u2014 click Sign in to Claude\u2026"))
         else:
             if data.session:
                 lines = _row_lines(data.session)
@@ -2252,7 +2258,8 @@ class TokenCoachApp(rumps.App):
 
         items.append(None)
         items.append(rumps.MenuItem("Auto-detect from Browser", callback=self._auto_detect_menu))
-        items.append(rumps.MenuItem("Set Session Cookie\u2026", callback=self._set_cookie))
+        items.append(rumps.MenuItem("Sign in to Claude\u2026", callback=self._sign_in))
+        items.append(rumps.MenuItem("Paste Session Key\u2026", callback=self._set_cookie))
         items.append(rumps.MenuItem("Paste Cookie from Clipboard", callback=self._paste_cookie))
         items.append(rumps.MenuItem("Show Raw API Data\u2026", callback=self._show_raw))
         items.append(None)
@@ -2693,7 +2700,7 @@ class TokenCoachApp(rumps.App):
                         self.config["cookie_str"] = sk
                         save_config(self.config)
             if not sk:
-                self._post_title("\u25c6")
+                self._post_title("\u25c6 !")      # not signed in: needs the person
                 self._fetching = False
                 return
             raw = fetch_raw(sk)
@@ -2784,8 +2791,9 @@ class TokenCoachApp(rumps.App):
                         self._expired_notified = True
                         _notify(
                             APP_NAME,
-                            "Session expired \u2014 please update your cookie",
-                            "Click: Set Session Cookie\u2026 or Auto-detect from Browser",
+                            "Claude sign-in expired",
+                            "Click to sign in again",
+                            data={"action": "signin"},
                         )
             else:
                 self._post_title("\u25c6 err")
@@ -3407,28 +3415,54 @@ class TokenCoachApp(rumps.App):
         if self._last_data:
             self._apply(self._last_data)
 
+    def _on_notification_click(self, info):
+        """Main thread: a notification was clicked."""
+        if isinstance(info, dict) and info.get("action") == "signin":
+            self._sign_in(None)
+
+    def _sign_in(self, _sender):
+        """Open the built-in sign-in window; fall back to pasting a key."""
+        if not _signin.open_window(self._signed_in, on_browser_fallback=lambda: self._set_cookie(None)):
+            self._set_cookie(None)
+
+    def _signed_in(self, cookie_str: str):
+        """Main thread: a validated session cookie from the sign-in window or paste dialog."""
+        with self._config_lock:
+            self.config["cookie_str"] = cookie_str
+            save_config(self.config)
+        self._warned_pcts.clear()
+        self._auth_fail_count = 0
+        self._expired_notified = False
+        self._schedule_fetch()
+        _notify(APP_NAME, "Signed in to Claude \u2713", "Fetching usage data\u2026")
+
     def _set_cookie(self, _sender):
         key = _ask_text(
-            title="Claude Usage \u2014 Set Cookies",
+            title="TokenCoach \u2014 Paste Session Key",
             prompt=(
-                "Paste ALL cookies from claude.ai (needed to bypass Cloudflare)\n\n"
-                "How to get them:\n"
-                "  1. Open https://claude.ai/settings/usage in Chrome\n"
-                "  2. F12 \u2192 Network tab \u2192 click any request to claude.ai\n"
-                "  3. In Headers, find the 'cookie:' row\n"
-                "  4. Right-click it \u2192 Copy value  (long string with semicolons)"
-                + ("\n\nCookies are saved already; leave this empty to keep them."
+                "\u201cSign in to Claude\u2026\u201d in this menu is easier. To paste instead:\n\n"
+                "  1. Open claude.ai in your browser and sign in\n"
+                "  2. Open Developer Tools \u2192 Application (Safari: Storage) \u2192 Cookies\n"
+                "  3. Choose claude.ai and copy the value of sessionKey\n"
+                "  4. Paste it here (a full 'Cookie:' line works too)"
+                + ("\n\nA session is saved already; leave this empty to keep it."
                    if self.config.get("cookie_str") else "")
             ),
             # Never pre-fill the saved cookie: osascript gets the dialog as a
             # command-line argument, which other processes can read.
         )
-        if key:
-            self.config["cookie_str"] = key.strip()
-            save_config(self.config)
-            self._warned_pcts.clear()
-            self._auth_fail_count = 0
-            self._schedule_fetch()
+        cookie_str = normalize_cookie_input(key or "")
+        if cookie_str:
+            threading.Thread(target=self._validate_pasted, args=(cookie_str,), daemon=True).start()
+
+    def _validate_pasted(self, cookie_str: str):
+        """Background: only a key that authenticates gets saved."""
+        from PyObjCTools import AppHelper
+        if _claude_cookie_is_valid(cookie_str):
+            AppHelper.callAfter(self._signed_in, cookie_str)
+        else:
+            _notify(APP_NAME, "That session key was rejected \u2014 it may have expired",
+                    "Try Sign in to Claude\u2026 instead.", data={"action": "signin"})
 
     def _paste_cookie(self, _sender):
         text = _clipboard_text()
@@ -3514,17 +3548,18 @@ class TokenCoachApp(rumps.App):
             self._auth_fail_count = 0
             _notify(APP_NAME, "Cookies auto-detected \u2713", "Fetching usage data\u2026")
             self._schedule_fetch()
-        elif _providers.last_blocked_browsers:
-            names = ", ".join(b.title() for b in _providers.last_blocked_browsers)
-            _notify(
-                APP_NAME,
-                f"macOS kept TokenCoach out of {names}",
-                "Its privacy protection blocks reading another app's data. Use "
-                "Set Session Cookie\u2026 in this menu instead.",
-            )
         else:
-            _notify(
-                APP_NAME,
-                "Could not find claude.ai session in any browser",
-                "Make sure you are logged in to claude.ai in Chrome, Firefox, or Safari.",
-            )
+            from PyObjCTools import AppHelper
+            AppHelper.callAfter(self._explain_no_session, list(_providers.last_blocked_browsers))
+
+    def _explain_no_session(self, blocked: list[str]):
+        """Main thread: auto-detect found nothing; say why and offer the sign-in window."""
+        msg = "TokenCoach could not find a signed-in claude.ai session in your browsers."
+        if blocked:
+            names = ", ".join(b.title() for b in blocked)
+            msg += (f"\n\nmacOS blocked TokenCoach from reading {names}. Its privacy "
+                    "protection stops one app from reading another app's data.")
+        msg += "\n\nSigning in here takes a few seconds and needs no special permissions."
+        if rumps.alert(title="No Claude session found", message=msg,
+                       ok="Sign in to Claude\u2026", cancel="Cancel") == 1:
+            self._sign_in(None)

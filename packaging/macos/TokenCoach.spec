@@ -9,7 +9,7 @@ arch = os.environ['TOKENCOACH_ARCH']
 version = os.environ['TOKENCOACH_BUILD_VERSION']
 a = Analysis([str(root / 'tokencoach.py')], pathex=[str(root)],
              datas=[(str(root / 'assets'), 'assets'), (str(root / 'LICENSE'), '.'), (str(root / 'build/build-identity.json'), '.')],
-             hiddenimports=collect_submodules('tokencoach'),
+             hiddenimports=collect_submodules('tokencoach') + ['WebKit'],
              excludes=['tkinter', 'pytest'], noarchive=False)
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='TokenCoach',
