@@ -1,6 +1,6 @@
 """README screenshots from sample data, rendered by headless Google Chrome.
 
-Run: python3 tokencoach.py --screenshots assets
+Run: python3 tokencoach.py --screenshots docs/images
 Only ever called from `--screenshots`, which points the app at a separate
 sample-data folder first, so no personal data can end up in an image.
 """
@@ -39,18 +39,28 @@ def _shoot(url: str, out: str, w: int, h: int) -> None:
                    check=True, capture_output=True, timeout=120)
 
 
-def render_panel(conn, out: str) -> None:
-    """The real menu bar panel, drawn offscreen with sample quota and spend."""
-    import sqlite3
-    from datetime import datetime
+def _view_png(view, out: str, scale: int = 2) -> None:
+    """Draw a view into a PNG at `scale`x, whatever the screen's backing scale
+    (a headless or non-Retina session would otherwise give a blurry 1x image)."""
+    from AppKit import NSBitmapImageRep
+    bounds = view.bounds()
+    rep = NSBitmapImageRep.alloc().initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel_(
+        None, int(bounds.size.width * scale), int(bounds.size.height * scale),
+        8, 4, True, False, "NSCalibratedRGBColorSpace", 0, 0)
+    rep.setSize_(bounds.size)
+    view.cacheDisplayInRect_toBitmapImageRep_(bounds, rep)
+    with open(out, "wb") as f:
+        f.write(bytes(rep.representationUsingType_properties_(4, {})))   # PNG
+
+
+def _bare_app():
+    """A TokenCoachApp that is drawn but never run, with no real config."""
+    import threading
     import rumps
-    from AppKit import NSAppearance
-    from tokencoach import ledger
-    from tokencoach.providers import LimitRow, UsageData, ProviderData
-    from tokencoach.ui import TokenCoachApp, _UsagePanel
+    from tokencoach.ui import TokenCoachApp
     app = TokenCoachApp.__new__(TokenCoachApp)
     # rumps.App creates ~/Library/Application Support/<name>; keep that out of
-    # the person's real Library while drawing the sample panel.
+    # the person's real Library while drawing.
     import rumps.rumps as _rumps_impl
     real = _rumps_impl.application_support
     scratch = tempfile.mkdtemp(prefix="tokencoach-render-")
@@ -59,7 +69,20 @@ def render_panel(conn, out: str) -> None:
         rumps.App.__init__(app, "TokenCoach", quit_button=None)
     finally:
         _rumps_impl.application_support = real
-    app.config, app._history, app._last_updated = {}, {}, datetime.now()
+    app.config, app._config_lock = {}, threading.Lock()
+    return app
+
+
+def render_panel(conn, out: str) -> None:
+    """The real menu bar panel, drawn offscreen with sample quota and spend."""
+    import sqlite3
+    from datetime import datetime
+    from AppKit import NSAppearance
+    from tokencoach import ledger
+    from tokencoach.providers import LimitRow, UsageData, ProviderData
+    from tokencoach.ui import _UsagePanel
+    app = _bare_app()
+    app._history, app._last_updated = {}, datetime.now()
     app._last_data = UsageData(session=LimitRow("5-hour", 38, "resets today 16:40"),
                                weekly_all=LimitRow("Weekly", 61, "resets Thu 09:00"))
     chatgpt = ProviderData(name="ChatGPT")
@@ -72,11 +95,52 @@ def render_panel(conn, out: str) -> None:
     panel._ensure_built()
     panel._rebuild_content()
     panel._panel.setAppearance_(NSAppearance.appearanceNamed_("NSAppearanceNameDarkAqua"))
-    view = panel._panel.contentView()
-    rep = view.bitmapImageRepForCachingDisplayInRect_(view.bounds())
-    view.cacheDisplayInRect_toBitmapImageRep_(view.bounds(), rep)
-    with open(out, "wb") as f:
-        f.write(bytes(rep.representationUsingType_properties_(4, {})))   # PNG
+    _view_png(panel._panel.contentView(), out)
+
+
+def render_setup_guide(out_dir: str) -> list[str]:
+    """The first-run guide's dialogs, as a new script install sees them.
+
+    Runs the real `_run_setup_guide` with each dialog drawn to a PNG instead
+    of shown, always taking the first button. Nothing is saved, nudges are not
+    turned on and the sign-in window never opens."""
+    from AppKit import NSAlert, NSAppearance
+    from rumps.rumps import _nsimage_from_file
+    from tokencoach import nudge, onboarding, ui
+    steps = onboarding.plan_steps(codex_found=False, nudges_on=False)
+    written = []
+
+    def draw(title=None, message="", ok=None, cancel=None, other=None, icon_path=None):
+        if not isinstance(cancel, str):
+            cancel = "Cancel" if cancel else None
+        alert = NSAlert.alertWithMessageText_defaultButton_alternateButton_otherButton_informativeTextWithFormat_(
+            title, ok, cancel, other, str(message).replace("%", "%%"))
+        alert.setAlertStyle_(0)
+        if icon_path is not None:                  # as rumps.alert does
+            alert.setIcon_(_nsimage_from_file(icon_path))
+        window = alert.window()
+        window.setAppearance_(NSAppearance.appearanceNamed_("NSAppearanceNameAqua"))
+        alert.layout()
+        out = os.path.join(out_dir, f"setup-{len(written) + 1}-{steps[len(written)]}.png")
+        _view_png(window.contentView().superview(), out)
+        written.append(out)
+        return 1
+
+    app = _bare_app()
+    app.set_nudges = app._sign_in = app._follow_browser_login = lambda *a: None
+    patches = [(ui.rumps, "alert", draw), (ui, "save_config", lambda *a: None),
+               (ui, "bundled", lambda: False),
+               (ui._providers, "codex_signin_available", lambda: False),
+               (nudge, "is_installed", lambda: False)]
+    saved = [(obj, name, getattr(obj, name)) for obj, name, _ in patches]
+    try:
+        for obj, name, value in patches:
+            setattr(obj, name, value)
+        app._run_setup_guide()
+    finally:
+        for obj, name, value in saved:
+            setattr(obj, name, value)
+    return written
 
 
 def capture(conn, config: dict, out_dir: str) -> list[str]:
@@ -107,5 +171,9 @@ def capture(conn, config: dict, out_dir: str) -> list[str]:
         written.append(out)
     except Exception:
         log.exception("panel screenshot failed")
+    try:
+        written += render_setup_guide(out_dir)
+    except Exception:
+        log.exception("setup guide screenshots failed")
     log.info("screenshots written to %s", out_dir)
     return written

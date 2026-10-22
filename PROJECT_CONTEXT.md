@@ -44,6 +44,8 @@ A navigation snapshot, not a replacement for requirements or live evidence. Upda
 
 ## Notes
 
+- 2026-10-22 docs: README rebuilt around a 3-step quick start, feature tour, FAQ and short privacy summary; reference material moved to `docs/install.md` and `docs/reference.md`; `SECURITY.md` explains sign-in window / browser-login / dashboard handling; sample screenshots regenerated; `--screenshots` now draws the panel at 2× on any display and the setup guide's dialogs (`setup-*.png`, real `_run_setup_guide` with dialogs drawn, nothing saved or opened; the guide's dialogs now show the logo via `ui._guide_icon`); social card footer now "macOS · free & open source" (GitHub's uploaded social preview still shows the old card until re-uploaded). Proposed GitHub About text in `docs/launch/github-about.md` is not applied.
+
 - 2026-10-17 billing: Analyze and Improve (`optimizer.run_claude`) drop `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` before calling `claude -p`, so an exported key cannot move them from the person's plan to API billing. `TOKENCOACH_USE_API_KEY=1` keeps the keys; a failed run that dropped one says so. Tests in `tests/test_release.py` (`ClaudeRunsOnSubscription`).
 
 - 2026-10-06 branding: original mint/ivory ribbon-diamond artwork in `assets/tokencoach-logo.png`, small dashboard variant and matching GitHub social card. GitHub repository social preview uploaded and verified after reload; README, self-contained dashboard header/favicon and future packaged app icon use the shared art. Full suite: 312 tests pass (existing non-failing log warning); diff whitespace check passes. Branding and the Homebrew-first release scope are included in the next signed commit.
