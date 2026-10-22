@@ -135,6 +135,19 @@ class DemoSandbox(unittest.TestCase):
         self.assertIs(ui.rumps.alert, real_alert)
         self.assertIs(ui.save_config, real_save)
 
+    def test_setup_guide_dialogs_use_the_logo(self):
+        from tokencoach import screenshots, ui
+        icons = []
+        app = screenshots._bare_app()
+        app.set_nudges = app._sign_in = app._follow_browser_login = lambda *a: None
+        with patch.object(ui.rumps, "alert", side_effect=lambda **kw: icons.append(kw.get("icon_path")) or 1), \
+                patch.object(ui, "save_config"), \
+                patch.object(ui._providers, "codex_signin_available", return_value=True), \
+                patch("tokencoach.nudge.is_installed", return_value=False):
+            app._run_setup_guide()
+        self.assertEqual(len(icons), 5)          # welcome, codex, nudges, connect, done
+        self.assertTrue(all(i and os.path.isfile(i) and i.endswith("tokencoach-logo-small.png") for i in icons))
+
 
 class Packaging(unittest.TestCase):
     def test_no_prerename_names_outside_migration_code(self):

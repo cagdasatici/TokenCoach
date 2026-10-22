@@ -32,8 +32,7 @@ skipped, and nothing is changed until you choose it:
   <img width="200" alt="Setup guide: All set" src="images/setup-4-done.png">
 </p>
 
-<sub>The guide as a new script install sees it (the icon is the Python app that runs TokenCoach),
-rendered by `tokencoach.py --screenshots` without any account.</sub>
+<sub>The guide as a new script install sees it, rendered by `tokencoach.py --screenshots` without any account.</sub>
 
 ### Signing in with the window
 

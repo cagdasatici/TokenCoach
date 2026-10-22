@@ -105,6 +105,7 @@ def render_setup_guide(out_dir: str) -> list[str]:
     of shown, always taking the first button. Nothing is saved, nudges are not
     turned on and the sign-in window never opens."""
     from AppKit import NSAlert, NSAppearance
+    from rumps.rumps import _nsimage_from_file
     from tokencoach import nudge, onboarding, ui
     steps = onboarding.plan_steps(codex_found=False, nudges_on=False)
     written = []
@@ -115,6 +116,8 @@ def render_setup_guide(out_dir: str) -> list[str]:
         alert = NSAlert.alertWithMessageText_defaultButton_alternateButton_otherButton_informativeTextWithFormat_(
             title, ok, cancel, other, str(message).replace("%", "%%"))
         alert.setAlertStyle_(0)
+        if icon_path is not None:                  # as rumps.alert does
+            alert.setIcon_(_nsimage_from_file(icon_path))
         window = alert.window()
         window.setAppearance_(NSAppearance.appearanceNamed_("NSAppearanceNameAqua"))
         alert.layout()

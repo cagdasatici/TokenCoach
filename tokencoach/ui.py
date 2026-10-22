@@ -53,6 +53,12 @@ _ICON_SIZE  = 14   # points -- matches menu bar font height
 _icon_cache: dict = {}
 
 
+def _guide_icon() -> str | None:
+    """The logo for the setup guide's dialogs; None (the app's own icon) if it is missing."""
+    path = os.path.join(_ICON_DIR, "tokencoach-logo-small.png")
+    return path if os.path.isfile(path) else None
+
+
 def _bar_icon(filename: str, tint_hex: str | None = None):
     """Lazy-load and cache a menu bar icon (14x14 pt NSImage).
 
@@ -2486,13 +2492,14 @@ class TokenCoachApp(rumps.App):
         steps = _onboarding.plan_steps(_providers.codex_signin_available(), nudge.is_installed())
         sign_in = False     # opened after the last dialog, which would otherwise sit modal over it
         follow_browser = False
+        icon = _guide_icon()
         for step in steps:
             if step == "welcome":
                 if not rumps.alert(
                     title=f"Welcome to {APP_NAME}",
                     message=("TokenCoach shows how much of your Claude quota is left right in the "
                              "menu bar, and what your Claude Code usage costs. It takes about a minute to set up."),
-                    ok="Get started", cancel="Later",
+                    ok="Get started", cancel="Later", icon_path=icon,
                 ):
                     break    # Later: not marked done, so it comes back next launch
             elif step == "codex":
@@ -2500,7 +2507,7 @@ class TokenCoachApp(rumps.App):
                     title="ChatGPT / Codex found",
                     message=("You are signed in to the Codex CLI, so TokenCoach can show your ChatGPT "
                              "usage too. It only reads that sign-in; nothing is copied or changed."),
-                    ok="Continue",
+                    ok="Continue", icon_path=icon,
                 )
             elif step == "nudges":
                 if rumps.alert(
@@ -2508,7 +2515,7 @@ class TokenCoachApp(rumps.App):
                     message=("A one-line tip appears in Claude Code before an expensive prompt. "
                              "It never blocks or changes what you type. Off unless you turn it on; "
                              "you can change this any time in the menu."),
-                    ok="Turn on", cancel="Skip",
+                    ok="Turn on", cancel="Skip", icon_path=icon,
                 ) == 1:
                     try:
                         self.set_nudges(True)
@@ -2522,7 +2529,7 @@ class TokenCoachApp(rumps.App):
                               "in once in a small window. " if bundled() else
                               "Sign in to claude.ai in a small window to see your remaining quota. ")
                              + "Skip it to track local Claude Code usage only."),
-                    ok=opts["ok"], cancel=opts["cancel"], other=opts["other"],
+                    ok=opts["ok"], cancel=opts["cancel"], other=opts["other"], icon_path=icon,
                 )
                 sign_in = opts.get(choice) == "signin"
                 follow_browser = opts.get(choice) == "browser"
@@ -2536,7 +2543,7 @@ class TokenCoachApp(rumps.App):
                              "To run this guide again, choose Setup Guide\u2026 in the settings menu."
                              + (" Use Launch at Login in Settings for automatic startup."
                                 if bundled() else "")),
-                    ok="Continue" if sign_in or follow_browser else "Done",
+                    ok="Continue" if sign_in or follow_browser else "Done", icon_path=icon,
                 )
                 with self._config_lock:
                     self.config["onboarding_done"] = _onboarding.ONBOARDING_VERSION
