@@ -51,6 +51,16 @@ async function run() {
   await new Promise(r=>setImmediate(r));
   assert.ok(count > beforeEdit, 'deferred refresh runs after editor closes');
 
+  // A filter or search box left focused is page chrome, not an editor: spend must keep refreshing.
+  for (const sel of ['#search', '#f-project', '#sort']) {
+    w.document.querySelector(sel).focus();
+    const before = count;
+    w.eval('requestRefresh()');
+    assert.ok(count > before, `refresh must not freeze while ${sel} has focus`);
+    await new Promise(r=>setImmediate(r));
+    w.document.activeElement.blur();
+  }
+
   pending = defer();
   const oldGenerated = w.eval('D.generated');
   next.generated += 301;

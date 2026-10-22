@@ -954,8 +954,11 @@ let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(red
 // active action. A deferred refresh runs as soon as the interaction finishes.
 let refreshDue = false, refreshing = false;
 function requestRefresh() { refreshDue = true; refreshData(); }
+// The filter bar, search and sort controls are never rebuilt by a refresh, so leaving one focused must not
+// freeze the numbers; only fields inside re-rendered content (editors, rewrites) are protected.
+const staticControl = el => el.matches('#search, #sort') || !!el.closest('.top');
 const protectedInteraction = () => pendingActions || document.querySelector('button[disabled], .improve[data-protect], .editor')
-  || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  || (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && !staticControl(document.activeElement));
 async function refreshData() {
   if (!D.live || document.hidden || protectedInteraction() || refreshing) return;
   refreshing = true;
