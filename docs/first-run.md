@@ -1,12 +1,12 @@
 # First run: install to first result
 
-This guide describes the current `main` channel. Homebrew currently ships v1.1.0;
-yield tracking and other later features require `main`. The DMG is deferred; Homebrew is the primary stable route. See [installation options and requirements](../README.md#install).
+This guide describes the current `main` channel. Homebrew currently ships v1.1.0, which
+predates the setup guide, the sign-in window and yield tracking. The downloaded app is deferred.
+See [installation options and requirements](install.md).
 
 ## 1. Install and launch
 
-Run the one command at the top of the README's [Install](../README.md#install)
-section in Terminal. It numbers its progress ("[1/4] Checking your Mac…"), explains in
+Run the one command in the README's [Quick start](../README.md#quick-start) in Terminal. It numbers its progress ("[1/4] Checking your Mac…"), explains in
 plain words anything missing (Python 3.10+, git) and ends by telling you to look for
 ◆ in the menu bar. Homebrew and the demo are alternatives (Homebrew ships v1.1.0,
 which lacks the setup guide). The core app requires macOS 12+; the optional widget needs
@@ -25,6 +25,16 @@ skipped, and nothing is changed until you choose it:
 4. **Connect Claude:** **Sign in to Claude…** opens a small sign-in window (no macOS permissions needed). **Skip** keeps local-only tracking. In the downloaded TokenCoach.app, **Use my browser's login** is the first choice: it walks through the two macOS prompts (access to other apps' data, then the browser's Keychain "Safe Storage") and, if macOS still blocks it, opens Privacy & Security → Full Disk Access with a **Check Again** button. Script and Homebrew installs don't offer it: they run as the shared Python, and allowing that would let every Python script read browser cookies. Their sign-in window keeps its own login, so signing in again is usually one click.
 5. **All set:** look for ◆ in your menu bar and click it any time.
 
+### Signing in with the window
+
+The window shows claude.ai's own login page; TokenCoach never sees your password. **Continue with
+Google** works: Google's page opens in a pop-up. Passkeys don't work in that window, so when Google
+offers one, choose **Try another way** and use your password or another method. If Google refuses
+anyway, click **Use my browser instead** or use **Continue with email**. When you are signed in,
+the window closes and a "Signed in to Claude ✓" notification appears; quota shows after the next
+refresh. If a session later expires, the menu bar shows ◆ ! and a notification offers to sign in
+again.
+
 The guide shows once, and not at all for people who already had a session or finished
 the older welcome. Rerun it with **Setup Guide…** in the ⚙ menu. It is unavailable in
 `--demo`. Session cookies are credentials and must never be shared in feedback,
@@ -33,7 +43,8 @@ screenshots or bug reports.
 Without signing in, TokenCoach still reads local Claude Code, Cowork and Codex
 transcripts for token counts, API-equivalent costs and habit evidence. Claude quota
 attribution needs quota readings, so it can remain unknown even when prompt costs are
-present. See [Privacy](../README.md#privacy) for what is read, stored and sent.
+present. See [Privacy](../README.md#privacy) and [how TokenCoach handles your logins](../SECURITY.md#how-tokencoach-handles-your-logins)
+for what is read, stored and sent.
 
 ## 3. Open the dashboard
 
@@ -67,9 +78,9 @@ backup; uninstall does not remove those blocks.
 | No live quota reading | Choose **Sign in to Claude…** (or **Setup Guide…**) in the ⚙ menu, then **Refresh Now**. Transcript tracking can still work. |
 | No prompts or activity in this range | Select **All** and a date range containing your activity. If this Mac has no supported local history, complete a normal task in Claude Code, Cowork or Codex and wait for the next scan. |
 | Still indexing older logs | Leave the app running until the background scan finishes; large histories may take longer than five minutes. |
-| Browser chats absent | Browser conversations are not automatically imported. An optional data-export import provides estimated tokens, without pricing. See the CLI help linked in the README. |
+| Browser chats absent | Browser conversations are not automatically imported. An optional data-export import provides estimated tokens, without pricing. See the [command line reference](reference.md#command-line). |
 | No suggestions or no change yet | More sessions or a longer comparison period may be needed. An empty result does not demonstrate savings. |
-| Usage ledger unavailable or persistent empty history despite supported logs | Use the README troubleshooting steps. Share only sanitized symptoms, version, macOS and installation method. |
+| Usage ledger unavailable or persistent empty history despite supported logs | Use the [README troubleshooting steps](../README.md#troubleshooting). Share only sanitized symptoms, version, macOS and installation method. |
 
 A successful first run means you can explain one available result, or understand
 why data is absent and what would make it available. It does not require every
