@@ -13,7 +13,7 @@ log = logging.getLogger("tokencoach")
 
 LOGIN_URL = "https://claude.ai/login"
 _WANTED = ("sessionKey", "lastActiveOrg", "routingHint")
-GOOGLE_MESSAGE = ("Google sign-in doesn't work inside apps. Use 'Continue with email' here, "
+GOOGLE_MESSAGE = ("If Google says this browser isn't supported, use 'Continue with email' here, "
                   "or sign in with your browser instead.")
 
 
@@ -24,6 +24,21 @@ def is_google_sso_url(url: str) -> bool:
     except ValueError:
         return False
     return host == "accounts.google.com" or host.endswith(".accounts.google.com")
+
+
+def safari_ua_suffix(version: str) -> str:
+    """What Safari appends to WebKit's user agent, e.g. 'Version/18.0 Safari/605.1.15'."""
+    v = version if version and all(p.isdigit() for p in version.split(".")) else "18.0"
+    return f"Version/{v} Safari/605.1.15"
+
+
+def _safari_version() -> str:
+    try:
+        import plistlib
+        with open("/Applications/Safari.app/Contents/Info.plist", "rb") as f:
+            return str(plistlib.load(f).get("CFBundleShortVersionString", ""))
+    except Exception:
+        return ""
 
 
 def build_cookie_string(cookies) -> str:
@@ -97,6 +112,7 @@ class _SignInWindow:
         self._checking = False
         self._rejected = None   # a stale session left in the store: don't re-ask claude.ai every tick
         self._timer = None
+        self._popups = []       # (window, webview) for sign-in pop-ups
         owner = self
 
         class _Delegate(Foundation.NSObject, protocols=[objc.protocolNamed("WKNavigationDelegate"),
@@ -106,18 +122,21 @@ class _SignInWindow:
 
             def webView_createWebViewWithConfiguration_forNavigationAction_windowFeatures_(
                     self, wv, _cfg, action, _features):
-                # Sign-in pop-ups (window.open) would otherwise silently do nothing.
-                _guarded(owner.open_popup, wv, action)
-                return None
+                # "Continue with Google" opens a pop-up; returning None refuses it and
+                # claude.ai shows "There was an error logging you in".
+                return _guarded(owner.open_popup, _cfg, action)
+
+            def webViewDidClose_(self, wv):
+                _guarded(owner.close_popup, wv)
 
             # Not decidePolicyForNavigationAction: PyObjC can't call its
             # decisionHandler block ("cannot call block without a signature"), and
             # that uncaught exception inside WebKit killed the whole app.
-            def webView_didStartProvisionalNavigation_(self, _wv, _nav):
-                _guarded(owner.check_url)
+            def webView_didStartProvisionalNavigation_(self, wv, _nav):
+                _guarded(owner.check_url, wv)
 
-            def webView_didReceiveServerRedirectForProvisionalNavigation_(self, _wv, _nav):
-                _guarded(owner.check_url)
+            def webView_didReceiveServerRedirectForProvisionalNavigation_(self, wv, _nav):
+                _guarded(owner.check_url, wv)
 
             def windowWillClose_(self, _note):
                 _guarded(owner.close)
@@ -157,6 +176,9 @@ class _SignInWindow:
         self._bar.setHidden_(True)
         self._bar_height = 64
         cfg = WebKit.WKWebViewConfiguration.alloc().init()     # default persistent data store
+        # Same engine as Safari, so say so: Google refuses sign-in to user agents
+        # that lack the Safari token, which a plain WKWebView does.
+        cfg.setApplicationNameForUserAgent_(safari_ua_suffix(_safari_version()))
         self._web = WebKit.WKWebView.alloc().initWithFrame_configuration_(
             Foundation.NSMakeRect(0, 0, bounds.size.width, bounds.size.height), cfg)
         self._web.setAutoresizingMask_(AppKit.NSViewWidthSizable | AppKit.NSViewHeightSizable)
@@ -179,21 +201,49 @@ class _SignInWindow:
         AppKit.NSApp.activateIgnoringOtherApps_(True)
         self._window.makeKeyAndOrderFront_(None)
 
-    def open_popup(self, wv, action):
+    def open_popup(self, cfg, action):
+        """A child window for window.open(). WebKit requires the returned view to
+        use `cfg`, which shares this window's cookie store, so a session set by
+        the pop-up is picked up by poll()."""
+        import AppKit
+        import Foundation
+        import WebKit
+        frame = self._window.frame()
+        win = AppKit.NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+            Foundation.NSMakeRect(frame.origin.x + 40, frame.origin.y - 40, 480, 640),
+            AppKit.NSWindowStyleMaskTitled | AppKit.NSWindowStyleMaskClosable,
+            AppKit.NSBackingStoreBuffered, False)
+        win.setTitle_("Sign in to Claude")
+        win.setReleasedWhenClosed_(False)
+        web = WebKit.WKWebView.alloc().initWithFrame_configuration_(
+            win.contentView().bounds(), cfg)
+        web.setAutoresizingMask_(AppKit.NSViewWidthSizable | AppKit.NSViewHeightSizable)
+        web.setNavigationDelegate_(self._delegate)
+        web.setUIDelegate_(self._delegate)
+        win.contentView().addSubview_(web)
+        win.makeKeyAndOrderFront_(None)
+        self._popups.append((win, web))
         url = action.request().URL()
-        if is_google_sso_url(str(url.absoluteString()) if url else ""):
-            self.show_google_notice()
-        else:
-            wv.loadRequest_(action.request())
+        self.check_url(web, str(url.absoluteString()) if url else "")
+        return web
 
-    def check_url(self):
-        """Google refuses embedded sign-in: go back to claude.ai and explain."""
-        url = self._web.URL()
-        if is_google_sso_url(str(url.absoluteString()) if url else ""):
-            import Foundation
-            self._web.stopLoading()
-            self._web.loadRequest_(Foundation.NSURLRequest.requestWithURL_(
-                Foundation.NSURL.URLWithString_(LOGIN_URL)))
+    def close_popup(self, web):
+        """The pop-up called window.close() (Google sign-in finished or was cancelled)."""
+        for win, w in list(self._popups):
+            if w is web:
+                self._popups.remove((win, w))
+                w.setNavigationDelegate_(None)
+                w.setUIDelegate_(None)
+                win.orderOut_(None)
+                win.close()
+        self.poll()
+
+    def check_url(self, web, url=None):
+        """On a Google page, offer the browser fallback in case Google still refuses."""
+        if url is None:
+            u = web.URL()
+            url = str(u.absoluteString()) if u else ""
+        if is_google_sso_url(url):
             self.show_google_notice()
 
     def show_google_notice(self):
@@ -260,6 +310,15 @@ class _SignInWindow:
         if self._timer is not None:
             self._timer.invalidate()
             self._timer = None
+        for win, web in self._popups:
+            try:
+                web.setNavigationDelegate_(None)
+                web.setUIDelegate_(None)
+                win.orderOut_(None)
+                win.close()
+            except Exception:
+                log.debug("sign-in pop-up close failed", exc_info=True)
+        self._popups = []
         try:
             self._web.setNavigationDelegate_(None)
             self._window.setDelegate_(None)

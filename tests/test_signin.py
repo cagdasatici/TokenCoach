@@ -7,7 +7,7 @@ _os.environ.setdefault("TOKENCOACH_DATA_DIR", _tempfile.mkdtemp(prefix="tokencoa
 import unittest
 
 from tokencoach.providers import normalize_cookie_input
-from tokencoach.signin import available, build_cookie_string, is_google_sso_url
+from tokencoach.signin import available, build_cookie_string, is_google_sso_url, safari_ua_suffix
 
 
 class NormalizeCookieInputTests(unittest.TestCase):
@@ -85,6 +85,18 @@ class RealWebViewTests(unittest.TestCase):
                            timeout=60, cwd=root, env=dict(_os.environ))
         self.assertIn("PAGE-OK", r.stdout, r.stderr[-800:])
         self.assertEqual(r.returncode, 0, r.stderr[-800:])
+
+
+class SafariUserAgentTests(unittest.TestCase):
+    """Google refused sign-in in the window: a plain WKWebView's user agent lacks
+    Safari's token. The window now appends exactly what Safari does."""
+
+    def test_uses_the_installed_version(self):
+        self.assertEqual(safari_ua_suffix("27.0.1"), "Version/27.0.1 Safari/605.1.15")
+
+    def test_falls_back_on_junk(self):
+        for v in ("", "abc", "27.0;evil"):
+            self.assertEqual(safari_ua_suffix(v), "Version/18.0 Safari/605.1.15")
 
 
 class NotificationClickTests(unittest.TestCase):
