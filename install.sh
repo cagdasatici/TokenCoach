@@ -32,14 +32,21 @@ app_pids() { ps -Ao pid=,args= | awk -v s="$1" '$3 == s && NF == 3 && $2 ~ /[Pp]
 say()  { printf '  %s\n' "$1"; }
 ok()   { printf '  \033[32m✓\033[0m  %s\n' "$1"; }
 warn() { printf '  \033[33m⚠\033[0m  %s\n' "$1"; }
-die()  { printf '  \033[31m✗\033[0m  %s\n' "$1"; exit 1; }
+die()  { DIED=1; printf '\n  \033[31m✗\033[0m  %s\n\n' "$1"; exit 1; }
+step() { printf '\n  \033[1m[%s/%s] %s\033[0m\n' "$1" "$TOTAL" "$2"; }
+TOTAL=4
+[ "$NO_LAUNCH" = "1" ] && TOTAL=3
+# Plain-language message instead of a raw error if anything unexpected fails.
+trap 'rc=$?; [ $rc -ne 0 ] && [ -z "$DIED" ] && printf "\n  \033[31m✗\033[0m  The install stopped early. Nothing is broken: run the same command again.\n  If it keeps failing, see https://github.com/cagdasatici/TokenCoach#troubleshooting\n\n"' EXIT
 
 echo ""
 echo "  TokenCoach — installer"
 echo "  ──────────────────────"
 echo ""
 
-[ "$(uname)" = "Darwin" ] || die "TokenCoach runs on macOS only."
+step 1 "Checking your Mac…"
+[ "$(uname)" = "Darwin" ] || die "TokenCoach is a Mac menu bar app and can only be installed on macOS."
+[ -n "$HOME" ] && [ -w "$HOME" ] || die "Your home folder is not writable, so TokenCoach cannot install. Run this from your normal Mac user account."
 
 # ── 1. Python 3.10+ and git ──────────────────────────────────────────────────
 BASE_PYTHON=""
@@ -49,9 +56,13 @@ for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
     BASE_PYTHON="$candidate"; break
   fi
 done
-[ -n "$BASE_PYTHON" ] || die "Python 3.10+ not found. Install it (brew install python) and re-run."
+[ -n "$BASE_PYTHON" ] || die "TokenCoach needs Python 3.10 or newer, and this Mac does not have it.
+     Fix: download the macOS installer from https://www.python.org/downloads/macos/
+     (or run: brew install python), then run the install command again."
 ok "Python: $($BASE_PYTHON --version)"
-command -v git &>/dev/null || die "git not found. Run: xcode-select --install"
+command -v git &>/dev/null || die "TokenCoach needs git, which comes with Apple's command line tools.
+     Fix: run  xcode-select --install  , click Install in the window that appears,
+     wait for it to finish, then run the install command again."
 
 # ── 2. Pre-rename installs: stop and remove the old moving parts ─────────────
 # TokenCoach began as a fork of AIQuotaBar and was briefly called AIQuotaLeft.
@@ -85,6 +96,7 @@ if [ "$legacy_found" = true ] && [ "$NO_LAUNCH" != "1" ]; then
 fi
 
 # ── 3. Get the code ──────────────────────────────────────────────────────────
+step 2 "Downloading TokenCoach…"
 if [ -d "$INSTALL_DIR/.git" ]; then
   say "↻  Updating $INSTALL_DIR…"
   git -C "$INSTALL_DIR" fetch --quiet origin
@@ -94,16 +106,20 @@ if [ -d "$INSTALL_DIR/.git" ]; then
 else
   say "↓  Downloading TokenCoach…"
   rm -rf "$INSTALL_DIR"
-  git clone --quiet --depth 1 --branch "$REF" "$REPO" "$INSTALL_DIR"
+  git clone --quiet --depth 1 --branch "$REF" "$REPO" "$INSTALL_DIR" \
+    || die "Could not download TokenCoach. Check that you are online, then run the install command again."
 fi
 ok "Code: $INSTALL_DIR ($(git -C "$INSTALL_DIR" rev-parse --short HEAD))"
 
 # ── 4. Virtual environment ───────────────────────────────────────────────────
-[ -d "$VENV_DIR" ] || "$BASE_PYTHON" -m venv "$VENV_DIR"
+step 3 "Setting it up (about a minute)…"
+[ -d "$VENV_DIR" ] || "$BASE_PYTHON" -m venv "$VENV_DIR" \
+  || die "Could not create TokenCoach's private Python environment. Check that your disk is not full, then run the install command again."
 PYTHON="$VENV_DIR/bin/python3"
 say "↓  Installing Python dependencies (first run takes a minute)…"
 "$PYTHON" -m pip install --quiet --disable-pip-version-check --upgrade pip
-"$PYTHON" -m pip install --quiet --disable-pip-version-check --require-hashes -r "$INSTALL_DIR/requirements.txt"
+"$PYTHON" -m pip install --quiet --disable-pip-version-check --require-hashes -r "$INSTALL_DIR/requirements.txt" \
+  || die "Could not download TokenCoach's components. Check that you are online, then run the install command again."
 # rumps notifications need a bundle identifier next to the interpreter
 [ -f "$VENV_DIR/bin/Info.plist" ] || \
   /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string $LABEL" "$VENV_DIR/bin/Info.plist" >/dev/null
@@ -112,15 +128,17 @@ ok "Dependencies installed"
 # Import once: this also moves data from pre-rename folders into
 # ~/Library/Application Support/TokenCoach, before anything else touches it.
 ( cd "$INSTALL_DIR" && "$PYTHON" -c "import tokencoach.config, tokencoach.ledger, tokencoach.ui" ) \
-  || die "TokenCoach failed to import — see the error above."
+  || die "TokenCoach installed but failed its self-check. The error above is what to include if you report it."
 ok "Self-check passed"
 
 if [ "$NO_LAUNCH" = "1" ]; then
   ok "Files installed (TOKENCOACH_NO_LAUNCH=1: nothing started)"
+  trap - EXIT
   exit 0
 fi
 
 # ── 5. Start at login ────────────────────────────────────────────────────────
+step 4 "Starting TokenCoach…"
 mkdir -p "$AGENTS" "$LOG_DIR"
 cat > "$PLIST" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -179,11 +197,23 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
   [ -n "$(app_pids "$INSTALL_DIR/tokencoach.py")" ] && break
   sleep 1
 done
-[ -n "$(app_pids "$INSTALL_DIR/tokencoach.py")" ] && ok "Running — look for the ◆ in your menu bar" \
-  || warn "Not running yet. Check $LOG_DIR/tokencoach.log"
+RUNNING=false
+[ -n "$(app_pids "$INSTALL_DIR/tokencoach.py")" ] && RUNNING=true
 
 echo ""
-echo "  Your dashboard opens from the menu bar icon → Open dashboard."
+if [ "$RUNNING" = true ]; then
+  echo "  ✅ TokenCoach is installed and running."
+  echo ""
+  echo "  What to do now:"
+  echo "    1. Look at the top-right of your screen, in the menu bar, for the ◆ symbol."
+  echo "    2. A short setup guide opens by itself. Click \"Get started\", then"
+  echo "       \"Sign in to Claude…\" to see your remaining quota."
+  echo "       (Not there? Click ◆ and choose Setup Guide… in the settings menu.)"
+else
+  warn "Installed, but not running yet. Open $LOG_DIR/tokencoach.log to see why,"
+  say "   or run: bash $INSTALL_DIR/tokencoach-doctor.sh"
+fi
+echo ""
 echo "  Uninstall any time: bash $INSTALL_DIR/uninstall.sh"
 echo ""
 echo "  TokenCoach is built on AIQuotaBar by Toprak Yagcioglu:"

@@ -18,6 +18,7 @@ A navigation snapshot, not a replacement for requirements or live evidence. Upda
 | Task | Entry points |
 |---|---|
 | Menu bar UI, panel | `tokencoach/ui.py`, `tests/test_remaining.py` |
+| First-run setup guide (when it shows, step order) | `tokencoach/onboarding.py`, `ui.py` `_run_setup_guide`, `tests/test_onboarding.py` |
 | Quota providers, reset times, auth | `tokencoach/providers.py`, `tests/test_reset_format.py` |
 | Ledger, pricing, quota attribution | `tokencoach/ledger.py`, `tests/test_ledger.py` |
 | Dashboard and its listener | `tokencoach/ledger_report.py`, `tokencoach/server.py` |

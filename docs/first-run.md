@@ -5,27 +5,35 @@ yield tracking and other later features require `main`. The DMG is deferred; Hom
 
 ## 1. Install and launch
 
-Use the Homebrew commands in the README for the stable release, or the script
-for moving `main`. The script launches TokenCoach;
-Homebrew needs `tokencoach &` after installation. The core app requires macOS 12+
-and Python 3.10+. The optional widget needs macOS 14+ and Xcode and is not needed to
-use the dashboard. Look for ◆ in the menu bar, then click it.
+Run the one command at the top of the README's [Install](../README.md#install)
+section in Terminal. It numbers its progress ("[1/4] Checking your Mac…"), explains in
+plain words anything missing (Python 3.10+, git) and ends by telling you to look for
+◆ in the menu bar. Homebrew and the demo are alternatives (Homebrew ships v1.1.0,
+which lacks the setup guide). The core app requires macOS 12+; the optional widget needs
+macOS 14+ and Xcode.
 
 If the icon is missing, follow [Troubleshooting](../README.md#troubleshooting).
 
-## 2. Choose quota access
+## 2. Setup guide
 
-For quota bars, sign in to claude.ai or chatgpt.com in your browser and select
-**Auto-detect from Browser** in the ⚙ menu. When macOS asks for Chrome-family
-Keychain access, choose **Allow**. If browser access fails, the menu also offers
-**Set Session Cookie…**; session cookies are credentials and must never be shared
-in feedback, screenshots or bug reports.
+On the first launch a short guide of native dialogs opens by itself; every step can be
+skipped, and nothing is changed until you choose it:
 
-You may skip browser access. TokenCoach still reads local Claude Code, Cowork and
-Codex transcripts for token counts, API-equivalent costs and habit evidence. ChatGPT
-quota can also use the Codex CLI's existing sign-in. Claude quota attribution needs
-quota readings, so it can remain unknown even when prompt costs are present.
-See [Privacy](../README.md#privacy) for what is read, stored and sent.
+1. **Welcome:** what TokenCoach shows. **Get started** or **Later** (Later brings it back next launch).
+2. **ChatGPT / Codex found:** shown only if you are signed in to the Codex CLI; TokenCoach reads that sign-in without prompts.
+3. **Claude Code nudges:** shown only if they are off; **Turn on** or **Skip**.
+4. **Connect Claude:** **Sign in to Claude…** opens a small sign-in window (no macOS permissions needed). **Skip** keeps local-only tracking. **Use my browser's login instead** looks for an existing browser login and may ask for Keychain permission; you can decline.
+5. **All set:** look for ◆ in your menu bar and click it any time.
+
+The guide shows once, and not at all for people who already had a session or finished
+the older welcome. Rerun it with **Setup Guide…** in the ⚙ menu. It is unavailable in
+`--demo`. Session cookies are credentials and must never be shared in feedback,
+screenshots or bug reports.
+
+Without signing in, TokenCoach still reads local Claude Code, Cowork and Codex
+transcripts for token counts, API-equivalent costs and habit evidence. Claude quota
+attribution needs quota readings, so it can remain unknown even when prompt costs are
+present. See [Privacy](../README.md#privacy) for what is read, stored and sent.
 
 ## 3. Open the dashboard
 
@@ -56,7 +64,7 @@ backup; uninstall does not remove those blocks.
 
 | What you see | What it means and what to try |
 |---|---|
-| No live quota reading | Check provider sign-in, try **Auto-detect from Browser**, then **Refresh Now**. Transcript tracking can still work. |
+| No live quota reading | Choose **Sign in to Claude…** (or **Setup Guide…**) in the ⚙ menu, then **Refresh Now**. Transcript tracking can still work. |
 | No prompts or activity in this range | Select **All** and a date range containing your activity. If this Mac has no supported local history, complete a normal task in Claude Code, Cowork or Codex and wait for the next scan. |
 | Still indexing older logs | Leave the app running until the background scan finishes; large histories may take longer than five minutes. |
 | Browser chats absent | Browser conversations are not automatically imported. An optional data-export import provides estimated tokens, without pricing. See the CLI help linked in the README. |

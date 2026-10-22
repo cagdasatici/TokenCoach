@@ -142,11 +142,28 @@ period with an earlier one measured the same way, not with an absolute target.
 
 ## Install
 
-The documentation below describes the `main` development channel. The Homebrew
-formula currently ships **v1.1.0**; features added after that release, including yield
-tracking, require `main` until v1.2.0 is accepted and published. Homebrew is the
-primary distribution route. The packaged DMG is deferred; no Apple Developer
-membership is required for the Homebrew or script installation.
+**Recommended: three steps, no technical knowledge needed.** You need a Mac (macOS 12 or newer).
+
+1. Open **Terminal** (press Cmd+Space, type "Terminal", press Return), paste this one command and press Return:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/cagdasatici/TokenCoach/main/install.sh | bash
+   ```
+   It checks your Mac, tells you in plain words if anything is missing (for example Python 3.10 or newer), and takes about a minute.
+2. Look at the top-right of your screen for the **◆** in the menu bar. A short setup guide opens by itself.
+3. Click **Get started**, then **Sign in to Claude…** and log in to claude.ai in the small window. Your remaining quota appears in the menu bar. Reopen the guide any time from the ⚙ menu → **Setup Guide…**.
+
+You can skip signing in: TokenCoach still tracks your local Claude Code, Cowork and Codex usage.
+
+This follows the moving `main` channel (it can include changes before a stable release) and also sets up start-at-login and the optional desktop widget. It
+automatically updates a clean `main` checkout only to commits signed by a key
+trusted by the installed copy. Local tracked edits or a different branch stop
+auto-update.
+
+### Other ways to install
+
+The Homebrew formula currently ships **v1.1.0**; features added after that release, including yield
+tracking and the setup guide, require `main` until v1.2.0 is accepted and published. The packaged DMG is
+deferred; no Apple Developer membership is required for the Homebrew or script installation.
 
 **Homebrew — stable release:**
 ```bash
@@ -159,16 +176,6 @@ Homebrew updates through `brew update && brew upgrade tokencoach`; the app does
 not run its git updater for Homebrew installations. This currently installs v1.1.0.
 When v1.2.0 is published, run `tokencoach &` once after upgrading from v1.1.0 so
 it can repair the login item that points at the removed version folder.
-
-**Script install — moving `main` channel** (also sets up start-at-login and the optional desktop widget):
-```bash
-curl -fsSL https://raw.githubusercontent.com/cagdasatici/TokenCoach/main/install.sh | bash
-```
-
-The script follows `main`, which can include changes before a stable release. It
-automatically updates a clean `main` checkout only to commits signed by a key
-trusted by the installed copy. Local tracked edits or a different branch stop
-auto-update.
 
 Release preparation and acceptance gates are recorded in
 [the v1.2.0 publication procedure](docs/release-publication-1.2.0.md).
@@ -200,12 +207,12 @@ auto-update make this move by themselves on their next start.
 
 ## Your first five minutes
 
-1. **Install and launch.** Choose a route in [Install](#install). The script starts
-   the app; with Homebrew, run `tokencoach &`. Look for ◆ in the macOS menu bar.
-2. **Connect quota if you want it.** Sign in at claude.ai or chatgpt.com, then choose
-   **Auto-detect from Browser** in the ⚙ menu. For a Chrome-family Keychain request,
-   choose **Allow**. You can skip browser access: local transcript tracking still works,
-   and ChatGPT quota can use an existing Codex CLI sign-in.
+1. **Install and launch.** Follow the three steps in [Install](#install). Look for ◆ in the macOS menu bar.
+2. **Connect quota if you want it.** The setup guide offers **Sign in to Claude…**, a small
+   window that needs no special permissions. If you skipped it, choose **Sign in to Claude…** or
+   **Setup Guide…** in the ⚙ menu. Browser auto-detect is an alternative and may trigger a
+   Chrome-family Keychain request (choose **Allow**). You can skip all of it: local transcript
+   tracking still works, and ChatGPT quota can use an existing Codex CLI sign-in.
 3. **Open dashboard** from the menu bar panel. Start with **All** and the simple view.
    Give the first transcript scan time to finish; a large history can take longer.
 4. **Read your first result.** Quota percentages mean **remaining**, and dollar amounts
@@ -286,8 +293,8 @@ like its closest published sibling and labelled *estimated*. Override anything i
 
 - **No ◆ in the menu bar:** `tail -50 ~/Library/Logs/TokenCoach/tokencoach.log`, then
   `bash ~/.tokencoach/tokencoach-doctor.sh` checks and repairs the moving parts.
-- **Quota bars empty:** log in at claude.ai / chatgpt.com in your browser, then
-  **Auto-detect from Browser** in the ⚙ menu.
+- **Quota bars empty:** choose **Sign in to Claude…** in the ⚙ menu (or **Setup Guide…**).
+  For ChatGPT, log in at chatgpt.com and use **Auto-detect from Browser**.
 - **Dashboard buttons do nothing:** open it from the menu bar icon; a saved copy is read-only.
 - **Command line:** `tokencoach --help` with Homebrew, otherwise
   `~/.tokencoach/.venv/bin/python ~/.tokencoach/tokencoach.py --help` (`--ledger`, `--dashboard`,

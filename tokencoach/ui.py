@@ -19,7 +19,7 @@ from tokencoach.config import (
     REFRESH_INTERVALS, DEFAULT_REFRESH,
     WARN_THRESHOLD, CRIT_THRESHOLD, PACING_ALERT_MINUTES,
     UPDATE_CHECK_INTERVAL, HISTORY_COLORS,
-    WIDGET_CACHE_DIR,
+    WIDGET_CACHE_DIR, DEMO,
 )
 from tokencoach.providers import (
     LimitRow, UsageData, ProviderData, parse_usage, fetch_raw,
@@ -40,6 +40,7 @@ from tokencoach.update import _check_and_apply_update, _restart_app
 from tokencoach import ledger as _ledger
 from tokencoach import providers as _providers
 from tokencoach import signin as _signin
+from tokencoach import onboarding as _onboarding
 from tokencoach import health
 from tokencoach.version import version_string
 from tokencoach.runtime import bundled, launch_args, acquire_instance
@@ -2269,6 +2270,7 @@ class TokenCoachApp(rumps.App):
         items.append(None)
         items.append(rumps.MenuItem("Auto-detect from Browser", callback=self._auto_detect_menu))
         items.append(rumps.MenuItem("Sign in to Claude\u2026", callback=self._sign_in))
+        items.append(rumps.MenuItem("Setup Guide\u2026", callback=self._setup_guide))
         items.append(rumps.MenuItem("Paste Session Key\u2026", callback=self._set_cookie))
         items.append(rumps.MenuItem("Paste Cookie from Clipboard", callback=self._paste_cookie))
         items.append(rumps.MenuItem("Show Raw API Data\u2026", callback=self._show_raw))
@@ -2419,6 +2421,9 @@ class TokenCoachApp(rumps.App):
 
     def _check_widget_status(self):
         """Show startup info about what the app is doing."""
+        # Decide before the old welcome flags below are set, or a new person
+        # would count as an existing one.
+        guide = _onboarding.should_show(self.config, demo=DEMO)
         if bundled() and not self.config.get("bundle_welcome"):
             rumps.alert(title="Welcome to TokenCoach", message=(
                 "Find the ◆ in the menu bar and use Open Dashboard. Quota needs a signed-in account; "
@@ -2432,7 +2437,9 @@ class TokenCoachApp(rumps.App):
         seen_welcome = self.config.get("seen_welcome", False)
         widget_ok = _is_widget_installed()
 
-        if not seen_welcome:
+        if guide:
+            self._run_setup_guide()
+        elif not seen_welcome:
             # First launch: say hello, then show the dashboard once the
             # ledger has had a moment to index existing logs.
             _notify(
@@ -2460,6 +2467,73 @@ class TokenCoachApp(rumps.App):
                         "A desktop widget is also available, check the menu."
                     ),
                 )
+
+    def _setup_guide(self, _sender):
+        """Menu item: run the setup guide again."""
+        if DEMO:
+            rumps.alert(title="Setup Guide", message="The setup guide is not available in the demo.")
+            return
+        self._run_setup_guide()
+
+    def _run_setup_guide(self):
+        """Short guided sequence of native dialogs; every step can be skipped."""
+        from tokencoach import nudge
+        steps = _onboarding.plan_steps(_providers.codex_signin_available(), nudge.is_installed())
+        for step in steps:
+            if step == "welcome":
+                if not rumps.alert(
+                    title=f"Welcome to {APP_NAME}",
+                    message=("TokenCoach shows how much of your Claude quota is left right in the "
+                             "menu bar, and what your Claude Code usage costs. It takes about a minute to set up."),
+                    ok="Get started", cancel="Later",
+                ):
+                    break    # Later: not marked done, so it comes back next launch
+            elif step == "codex":
+                rumps.alert(
+                    title="ChatGPT / Codex found",
+                    message=("You are signed in to the Codex CLI, so TokenCoach can show your ChatGPT "
+                             "usage too. It only reads that sign-in; nothing is copied or changed."),
+                    ok="Continue",
+                )
+            elif step == "nudges":
+                if rumps.alert(
+                    title="Claude Code nudges (optional)",
+                    message=("A one-line tip appears in Claude Code before an expensive prompt. "
+                             "It never blocks or changes what you type. Off unless you turn it on; "
+                             "you can change this any time in the menu."),
+                    ok="Turn on", cancel="Skip",
+                ) == 1:
+                    try:
+                        self.set_nudges(True)
+                    except Exception:
+                        log.exception("setup guide: enabling nudges failed")
+            elif step == "connect":
+                choice = rumps.alert(
+                    title="Connect Claude",
+                    message=("Sign in to claude.ai in a small window to see your remaining quota. "
+                             "Skip it to track local Claude Code usage only."),
+                    ok="Sign in to Claude\u2026", cancel="Skip",
+                    other="Use my browser\u2019s login instead",
+                )
+                if choice == 1:
+                    self._sign_in(None)
+                elif choice == -1 and rumps.alert(
+                    title="Use my browser\u2019s login",
+                    message=("TokenCoach will look for a claude.ai login in your browsers. macOS may "
+                             "ask for Keychain permission; you can decline and still track local usage."),
+                    ok="Look for it", cancel="Cancel",
+                ) == 1:
+                    self._auto_detect_menu(None)
+            elif step == "done":
+                rumps.alert(
+                    title="All set",
+                    message=("Look for \u25c6 in your menu bar and click it any time. "
+                             "To run this guide again, choose Setup Guide\u2026 in the settings menu."),
+                    ok="Done",
+                )
+                with self._config_lock:
+                    self.config["onboarding_done"] = _onboarding.ONBOARDING_VERSION
+                    save_config(self.config)
 
     def _open_widget_settings(self, _sender):
         """Open the widget host app (shows add-widget instructions)."""
