@@ -112,6 +112,10 @@ def _org_id_from_cookies(cookies: dict) -> str | None:
 
 
 def _org_id_from_api(cookies: dict) -> str | None:
+    """The org uuid, or None. Raises the 401/403 if the session itself was
+    refused and no endpoint helped: an expired sessionKey must reach the
+    caller's session-expired handling, not turn into "no organization id"."""
+    auth_error: CurlHTTPError | None = None
     for path in (
         "/api/organizations",
         "/api/bootstrap",
@@ -134,8 +138,14 @@ def _org_id_from_api(cookies: dict) -> str | None:
                 ):
                     if candidate:
                         return candidate
+        except CurlHTTPError as e:
+            log.debug("endpoint %s failed: %s", path, e)
+            if getattr(getattr(e, "response", None), "status_code", 0) in (401, 403):
+                auth_error = auth_error or e
         except Exception as e:
             log.debug("endpoint %s failed: %s", path, e)
+    if auth_error is not None:
+        raise auth_error
     return None
 
 

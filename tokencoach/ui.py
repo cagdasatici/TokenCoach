@@ -1918,6 +1918,7 @@ class TokenCoachApp(rumps.App):
         self._warned_pcts: set[str] = set()   # track which rows we've notified
         self._prev_pcts: dict[str, int] = {}  # previous pct per row key (reset detection)
         self._auth_fail_count = 0
+        self._expired_notified = False        # one "session expired" notice per expiry
         self._chatgpt_cookie_retry_after = 0.0
         # Providers whose cookies were looked for unasked this run. Reading
         # Chromium cookies needs the browser's Keychain key, so with nothing
@@ -2680,7 +2681,7 @@ class TokenCoachApp(rumps.App):
         threading.Thread(target=self._fetch_and_update, daemon=True).start()
 
     def _fetch_and_update(self):
-
+        retry_now = False      # fresh cookies found: fetch again once this one has finished
         try:
             with self._config_lock:
                 sk = self.config.get("cookie_str")
@@ -2698,6 +2699,7 @@ class TokenCoachApp(rumps.App):
             raw = fetch_raw(sk)
             self._last_raw = raw
             self._auth_fail_count = 0
+            self._expired_notified = False
             data = parse_usage(raw)
             self._last_data = data
             self._last_updated = datetime.now()
@@ -2767,14 +2769,19 @@ class TokenCoachApp(rumps.App):
                 if self._auth_fail_count >= 2:
                     self._auth_fail_count = 0
                     cookie_str = _auto_detect_cookies()
-                    if cookie_str:
+                    with self._config_lock:
+                        stale = self.config.get("cookie_str")
+                    # _auto_detect_cookies falls back to an unvalidated candidate, which
+                    # is often the very cookie that just failed: that is no recovery.
+                    if cookie_str and cookie_str != stale:
                         with self._config_lock:
                             self.config["cookie_str"] = cookie_str
                             save_config(self.config)
                         self._warned_pcts.clear()
                         log.info("Auth failed \u2014 auto-detected fresh cookies from browser")
-                        self._schedule_fetch()
-                    else:
+                        retry_now = True
+                    elif not self._expired_notified:
+                        self._expired_notified = True
                         _notify(
                             APP_NAME,
                             "Session expired \u2014 please update your cookie",
@@ -2787,6 +2794,8 @@ class TokenCoachApp(rumps.App):
             self._post_title("\u25c6 ?")
         finally:
             self._fetching = False
+        if retry_now:
+            self._schedule_fetch()
 
     def _check_warnings(self, data: UsageData):
         """Send macOS notification when a Claude limit crosses a threshold or resets."""

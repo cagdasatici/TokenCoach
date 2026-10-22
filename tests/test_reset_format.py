@@ -155,6 +155,26 @@ class OrgLookup(unittest.TestCase):
             with patch.object(providers, "_get", return_value=reply):
                 self.assertEqual(providers._org_id_from_api({"sessionKey": "x"}), self.UUID)
 
+    def test_expired_session_raises_the_403(self):
+        """Found on the owner's Mac: an expired sessionKey (403 account_session_invalid
+        everywhere) became "Could not find organization id", so the bar sat at "◆ ?"
+        and the session-expired recovery never ran."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from tokencoach import providers
+        expired = providers.CurlHTTPError("403", response=SimpleNamespace(status_code=403))
+        with patch.object(providers, "_get", side_effect=expired):
+            with self.assertRaises(providers.CurlHTTPError):
+                providers.fetch_raw("sessionKey=stale")
+
+    def test_one_refused_endpoint_does_not_hide_an_org(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from tokencoach import providers
+        expired = providers.CurlHTTPError("403", response=SimpleNamespace(status_code=403))
+        with patch.object(providers, "_get", side_effect=[expired, {"org_id": self.UUID}]):
+            self.assertEqual(providers._org_id_from_api({"sessionKey": "x"}), self.UUID)
+
 
 class ChatGPTFromCodex(unittest.TestCase):
     """Found on the owner's Mac: macOS keeps the app out of the browser's
