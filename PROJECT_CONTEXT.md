@@ -18,6 +18,7 @@ A navigation snapshot, not a replacement for requirements or live evidence. Upda
 | Task | Entry points |
 |---|---|
 | Menu bar UI, panel | `tokencoach/ui.py`, `tests/test_remaining.py` |
+| First-run setup guide (when it shows, step order) | `tokencoach/onboarding.py`, `ui.py` `_run_setup_guide`, `tests/test_onboarding.py` |
 | Quota providers, reset times, auth | `tokencoach/providers.py`, `tests/test_reset_format.py` |
 | Ledger, pricing, quota attribution | `tokencoach/ledger.py`, `tests/test_ledger.py` |
 | Dashboard and its listener | `tokencoach/ledger_report.py`, `tokencoach/server.py` |
@@ -42,6 +43,8 @@ A navigation snapshot, not a replacement for requirements or live evidence. Upda
 - Release packaging (PS8), implementation added 2026-10-05: `packaging/macos/`, `scripts/build-dmg.sh`, manual candidate workflow, bundled runtime/hook/login/update paths, onboarding and UI cleanup. Widget excluded. An arm64 development DMG builds on macOS 27.0.1 and packaged dependency/version checks pass; it is ad-hoc signed and explicitly labelled DEVELOPMENT. Release builds require pinned dependencies, a clean signed candidate, Developer ID/notarytool access, and all Mach-O components compatible with macOS 14; this host's Homebrew Python fails the release baseline (requires macOS 27). No valid signing identities were available. All 310 Python tests and sample-data JavaScript checks pass. A cleanup test isolation error briefly affected background-agent plist paths; both files are present and verified, processes retained their PIDs, and a regression now protects the configured agent directory (details in path I). Signing/notarization, baseline/Intel builds, Gatekeeper/clean-account, login, upgrade and migration/removal UI acceptance remain open under path I. Guide: `docs/macos-distribution.md`. PS8 is not accepted or published; PS3 still owns publication and formula alignment.
 
 ## Notes
+
+- 2026-10-22 docs: README rebuilt around a 3-step quick start, feature tour, FAQ and short privacy summary; reference material moved to `docs/install.md` and `docs/reference.md`; `SECURITY.md` explains sign-in window / browser-login / dashboard handling; sample screenshots regenerated; `--screenshots` now draws the panel at 2× on any display and the setup guide's dialogs (`setup-*.png`, real `_run_setup_guide` with dialogs drawn, nothing saved or opened; the guide's dialogs now show the logo via `ui._guide_icon`); social card footer now "macOS · free & open source" (GitHub's uploaded social preview still shows the old card until re-uploaded). Proposed GitHub About text in `docs/launch/github-about.md` is not applied.
 
 - 2026-10-17 billing: Analyze and Improve (`optimizer.run_claude`) drop `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` before calling `claude -p`, so an exported key cannot move them from the person's plan to API billing. `TOKENCOACH_USE_API_KEY=1` keeps the keys; a failed run that dropped one says so. Tests in `tests/test_release.py` (`ClaudeRunsOnSubscription`).
 

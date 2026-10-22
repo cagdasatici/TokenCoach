@@ -10,6 +10,7 @@ import tempfile
 import time
 import threading
 import urllib.parse
+from collections.abc import Mapping
 from datetime import datetime, timezone, timedelta
 
 from tokencoach.config import (
@@ -18,12 +19,12 @@ from tokencoach.config import (
     REFRESH_INTERVALS, DEFAULT_REFRESH,
     WARN_THRESHOLD, CRIT_THRESHOLD, PACING_ALERT_MINUTES,
     UPDATE_CHECK_INTERVAL, HISTORY_COLORS,
-    WIDGET_CACHE_DIR,
+    WIDGET_CACHE_DIR, DEMO,
 )
 from tokencoach.providers import (
     LimitRow, UsageData, ProviderData, parse_usage, fetch_raw,
     fetch_claude_code_stats, fetch_chatgpt, PROVIDER_REGISTRY, COOKIE_PROVIDERS,
-    CurlHTTPError, parse_cookie_string,
+    CurlHTTPError, parse_cookie_string, normalize_cookie_input, _claude_cookie_is_valid,
     _auto_detect_cookies, _auto_detect_chatgpt_cookies,
     _warn_keychain_once, _fmt_reset, _BROWSER_COOKIE3_OK,
 )
@@ -38,6 +39,8 @@ from tokencoach.widget import _write_widget_cache, _is_widget_installed
 from tokencoach.update import _check_and_apply_update, _restart_app
 from tokencoach import ledger as _ledger
 from tokencoach import providers as _providers
+from tokencoach import signin as _signin
+from tokencoach import onboarding as _onboarding
 from tokencoach import health
 from tokencoach.version import version_string
 from tokencoach.runtime import bundled, launch_args, acquire_instance
@@ -48,6 +51,12 @@ from tokencoach.runtime import bundled, launch_args, acquire_instance
 _ICON_DIR   = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
 _ICON_SIZE  = 14   # points -- matches menu bar font height
 _icon_cache: dict = {}
+
+
+def _guide_icon() -> str | None:
+    """The logo for the setup guide's dialogs; None (the app's own icon) if it is missing."""
+    path = os.path.join(_ICON_DIR, "tokencoach-logo-small.png")
+    return path if os.path.isfile(path) else None
 
 
 def _bar_icon(filename: str, tint_hex: str | None = None):
@@ -967,13 +976,23 @@ def _clipboard_text() -> str:
 
 # -- notification helpers ------------------------------------------------------
 
-def _notify(title: str, subtitle: str, message: str = ""):
+def _notify(title: str, subtitle: str, message: str = "", data: dict | None = None):
     """rumps.notification wrapper -- silently swallows if the notification
-    center is unavailable (e.g. missing Info.plist in dev environments)."""
+    center is unavailable (e.g. missing Info.plist in dev environments).
+    `data` comes back to the @rumps.notifications handler when it is clicked."""
     try:
-        rumps.notification(title, subtitle, message)
+        rumps.notification(title, subtitle, message, data=data)
     except Exception as e:
         log.debug("notification suppressed: %s", e)
+
+
+def _notification_action(info) -> str | None:
+    """The "action" a clicked notification carried. rumps hands the handler a
+    Notification (a Mapping, not a dict) whose payload is its `.data`."""
+    data = getattr(info, "data", info)
+    if isinstance(data, Mapping):
+        return data.get("action")
+    return None
 
 
 def _show_text(title: str, text: str):
@@ -1895,6 +1914,7 @@ class TokenCoachApp(rumps.App):
 
         super().__init__("\u25c6", quit_button=None)
         self.config = load_config()
+        rumps.notifications(self._on_notification_click)
         legacy_config_changed = self.config.pop("copilot_cookies", None) is not None
         legacy_config_changed |= self.config.pop("cursor_cookies", None) is not None
         notifications = self.config.get("notifications")
@@ -2050,7 +2070,10 @@ class TokenCoachApp(rumps.App):
         items.append(_section_header_mi("  Claude", "claude_icon.png", "#D97757"))
 
         if data is None or not any([data.session, data.weekly_all, data.weekly_sonnet]):
-            items.append(_mi("  No data \u2014 click Auto-detect from Browser"))
+            if self.config.get("cookie_str"):
+                items.append(_mi("  No data yet"))
+            else:
+                items.append(_mi("  Not signed in \u2014 click Sign in to Claude\u2026"))
         else:
             if data.session:
                 lines = _row_lines(data.session)
@@ -2252,7 +2275,11 @@ class TokenCoachApp(rumps.App):
 
         items.append(None)
         items.append(rumps.MenuItem("Auto-detect from Browser", callback=self._auto_detect_menu))
-        items.append(rumps.MenuItem("Set Session Cookie\u2026", callback=self._set_cookie))
+        items.append(rumps.MenuItem("Sign in to Claude\u2026", callback=self._sign_in))
+        if bundled():
+            items.append(rumps.MenuItem("Use My Browser\u2019s Login\u2026", callback=self._follow_browser_login))
+        items.append(rumps.MenuItem("Setup Guide\u2026", callback=self._setup_guide))
+        items.append(rumps.MenuItem("Paste Session Key\u2026", callback=self._set_cookie))
         items.append(rumps.MenuItem("Paste Cookie from Clipboard", callback=self._paste_cookie))
         items.append(rumps.MenuItem("Show Raw API Data\u2026", callback=self._show_raw))
         items.append(None)
@@ -2402,7 +2429,13 @@ class TokenCoachApp(rumps.App):
 
     def _check_widget_status(self):
         """Show startup info about what the app is doing."""
-        if bundled() and not self.config.get("bundle_welcome"):
+        # Decide before the old welcome flags below are set, or a new person
+        # would count as an existing one.
+        guide = _onboarding.should_show(self.config, demo=DEMO)
+        if bundled() and not self.config.get("bundle_welcome") and guide:
+            self.config["bundle_welcome"] = True      # the guide is the welcome now
+            save_config(self.config)
+        elif bundled() and not self.config.get("bundle_welcome"):
             rumps.alert(title="Welcome to TokenCoach", message=(
                 "Find the ◆ in the menu bar and use Open Dashboard. Quota needs a signed-in account; "
                 "local usage appears when Claude Code, Cowork or Codex logs are present. Browser access "
@@ -2415,7 +2448,9 @@ class TokenCoachApp(rumps.App):
         seen_welcome = self.config.get("seen_welcome", False)
         widget_ok = _is_widget_installed()
 
-        if not seen_welcome:
+        if guide:
+            self._run_setup_guide()
+        elif not seen_welcome:
             # First launch: say hello, then show the dashboard once the
             # ledger has had a moment to index existing logs.
             _notify(
@@ -2443,6 +2478,80 @@ class TokenCoachApp(rumps.App):
                         "A desktop widget is also available, check the menu."
                     ),
                 )
+
+    def _setup_guide(self, _sender):
+        """Menu item: run the setup guide again."""
+        if DEMO:
+            rumps.alert(title="Setup Guide", message="The setup guide is not available in the demo.")
+            return
+        self._run_setup_guide()
+
+    def _run_setup_guide(self):
+        """Short guided sequence of native dialogs; every step can be skipped."""
+        from tokencoach import nudge
+        steps = _onboarding.plan_steps(_providers.codex_signin_available(), nudge.is_installed())
+        sign_in = False     # opened after the last dialog, which would otherwise sit modal over it
+        follow_browser = False
+        icon = _guide_icon()
+        for step in steps:
+            if step == "welcome":
+                if not rumps.alert(
+                    title=f"Welcome to {APP_NAME}",
+                    message=("TokenCoach shows how much of your Claude quota is left right in the "
+                             "menu bar, and what your Claude Code usage costs. It takes about a minute to set up."),
+                    ok="Get started", cancel="Later", icon_path=icon,
+                ):
+                    break    # Later: not marked done, so it comes back next launch
+            elif step == "codex":
+                rumps.alert(
+                    title="ChatGPT / Codex found",
+                    message=("You are signed in to the Codex CLI, so TokenCoach can show your ChatGPT "
+                             "usage too. It only reads that sign-in; nothing is copied or changed."),
+                    ok="Continue", icon_path=icon,
+                )
+            elif step == "nudges":
+                if rumps.alert(
+                    title="Claude Code nudges (optional)",
+                    message=("A one-line tip appears in Claude Code before an expensive prompt. "
+                             "It never blocks or changes what you type. Off unless you turn it on; "
+                             "you can change this any time in the menu."),
+                    ok="Turn on", cancel="Skip", icon_path=icon,
+                ) == 1:
+                    try:
+                        self.set_nudges(True)
+                    except Exception:
+                        log.exception("setup guide: enabling nudges failed")
+            elif step == "connect":
+                opts = _onboarding.connect_choices(bundled())
+                choice = rumps.alert(
+                    title="Connect Claude",
+                    message=(("Use the claude.ai login you already have in your browser, or sign "
+                              "in once in a small window. " if bundled() else
+                              "Sign in to claude.ai in a small window to see your remaining quota. ")
+                             + "Skip it to track local Claude Code usage only."),
+                    ok=opts["ok"], cancel=opts["cancel"], other=opts["other"], icon_path=icon,
+                )
+                sign_in = opts.get(choice) == "signin"
+                follow_browser = opts.get(choice) == "browser"
+            elif step == "done":
+                rumps.alert(
+                    title="All set",
+                    message=(("Next, sign in to claude.ai in the window that opens. " if sign_in else
+                              "Next, allow TokenCoach to read your browser\u2019s login. " if follow_browser
+                              else "")
+                             + "Look for \u25c6 in your menu bar and click it any time. "
+                             "To run this guide again, choose Setup Guide\u2026 in the settings menu."
+                             + (" Use Launch at Login in Settings for automatic startup."
+                                if bundled() else "")),
+                    ok="Continue" if sign_in or follow_browser else "Done", icon_path=icon,
+                )
+                with self._config_lock:
+                    self.config["onboarding_done"] = _onboarding.ONBOARDING_VERSION
+                    save_config(self.config)
+        if sign_in:
+            self._sign_in(None)
+        elif follow_browser:
+            self._follow_browser_login(None)
 
     def _open_widget_settings(self, _sender):
         """Open the widget host app (shows add-widget instructions)."""
@@ -2693,7 +2802,7 @@ class TokenCoachApp(rumps.App):
                         self.config["cookie_str"] = sk
                         save_config(self.config)
             if not sk:
-                self._post_title("\u25c6")
+                self._post_title("\u25c6 !")      # not signed in: needs the person
                 self._fetching = False
                 return
             raw = fetch_raw(sk)
@@ -2784,8 +2893,9 @@ class TokenCoachApp(rumps.App):
                         self._expired_notified = True
                         _notify(
                             APP_NAME,
-                            "Session expired \u2014 please update your cookie",
-                            "Click: Set Session Cookie\u2026 or Auto-detect from Browser",
+                            "Claude sign-in expired",
+                            "Click to sign in again",
+                            data={"action": "signin"},
                         )
             else:
                 self._post_title("\u25c6 err")
@@ -3407,28 +3517,54 @@ class TokenCoachApp(rumps.App):
         if self._last_data:
             self._apply(self._last_data)
 
+    def _on_notification_click(self, info):
+        """Main thread: a notification was clicked."""
+        if _notification_action(info) == "signin":
+            self._sign_in(None)
+
+    def _sign_in(self, _sender):
+        """Open the built-in sign-in window; fall back to pasting a key."""
+        if not _signin.open_window(self._signed_in, on_browser_fallback=lambda: self._set_cookie(None)):
+            self._set_cookie(None)
+
+    def _signed_in(self, cookie_str: str):
+        """Main thread: a validated session cookie from the sign-in window or paste dialog."""
+        with self._config_lock:
+            self.config["cookie_str"] = cookie_str
+            save_config(self.config)
+        self._warned_pcts.clear()
+        self._auth_fail_count = 0
+        self._expired_notified = False
+        self._schedule_fetch()
+        _notify(APP_NAME, "Signed in to Claude \u2713", "Fetching usage data\u2026")
+
     def _set_cookie(self, _sender):
         key = _ask_text(
-            title="Claude Usage \u2014 Set Cookies",
+            title="TokenCoach \u2014 Paste Session Key",
             prompt=(
-                "Paste ALL cookies from claude.ai (needed to bypass Cloudflare)\n\n"
-                "How to get them:\n"
-                "  1. Open https://claude.ai/settings/usage in Chrome\n"
-                "  2. F12 \u2192 Network tab \u2192 click any request to claude.ai\n"
-                "  3. In Headers, find the 'cookie:' row\n"
-                "  4. Right-click it \u2192 Copy value  (long string with semicolons)"
-                + ("\n\nCookies are saved already; leave this empty to keep them."
+                "\u201cSign in to Claude\u2026\u201d in this menu is easier. To paste instead:\n\n"
+                "  1. Open claude.ai in your browser and sign in\n"
+                "  2. Open Developer Tools \u2192 Application (Safari: Storage) \u2192 Cookies\n"
+                "  3. Choose claude.ai and copy the value of sessionKey\n"
+                "  4. Paste it here (a full 'Cookie:' line works too)"
+                + ("\n\nA session is saved already; leave this empty to keep it."
                    if self.config.get("cookie_str") else "")
             ),
             # Never pre-fill the saved cookie: osascript gets the dialog as a
             # command-line argument, which other processes can read.
         )
-        if key:
-            self.config["cookie_str"] = key.strip()
-            save_config(self.config)
-            self._warned_pcts.clear()
-            self._auth_fail_count = 0
-            self._schedule_fetch()
+        cookie_str = normalize_cookie_input(key or "")
+        if cookie_str:
+            threading.Thread(target=self._validate_pasted, args=(cookie_str,), daemon=True).start()
+
+    def _validate_pasted(self, cookie_str: str):
+        """Background: only a key that authenticates gets saved."""
+        from PyObjCTools import AppHelper
+        if _claude_cookie_is_valid(cookie_str):
+            AppHelper.callAfter(self._signed_in, cookie_str)
+        else:
+            _notify(APP_NAME, "That session key was rejected \u2014 it may have expired",
+                    "Try Sign in to Claude\u2026 instead.", data={"action": "signin"})
 
     def _paste_cookie(self, _sender):
         text = _clipboard_text()
@@ -3514,17 +3650,87 @@ class TokenCoachApp(rumps.App):
             self._auth_fail_count = 0
             _notify(APP_NAME, "Cookies auto-detected \u2713", "Fetching usage data\u2026")
             self._schedule_fetch()
-        elif _providers.last_blocked_browsers:
-            names = ", ".join(b.title() for b in _providers.last_blocked_browsers)
-            _notify(
-                APP_NAME,
-                f"macOS kept TokenCoach out of {names}",
-                "Its privacy protection blocks reading another app's data. Use "
-                "Set Session Cookie\u2026 in this menu instead.",
+        else:
+            from PyObjCTools import AppHelper
+            AppHelper.callAfter(self._explain_no_session, list(_providers.last_blocked_browsers))
+
+    # -- following the browser's login (downloaded app only) -------------------
+
+    def _follow_browser_login(self, _sender):
+        """Main thread: guide the person through letting TokenCoach.app read their
+        browser's claude.ai login. Only offered in the app build: macOS then asks
+        about TokenCoach itself, not the Python every script on the Mac shares."""
+        if not bundled() or not _BROWSER_COOKIE3_OK:
+            self._sign_in(None)
+            return
+        if rumps.alert(
+            title="Use your browser\u2019s Claude login",
+            message=("TokenCoach can use the claude.ai login you already have in your browser, "
+                     "so you never sign in separately.\n\n"
+                     "macOS will ask two things. Click Allow for both:\n"
+                     "  1. \u201cTokenCoach would like to access data from other apps\u201d\n"
+                     "  2. A password prompt for your browser\u2019s \u201cSafe Storage\u201d "
+                     "(Chrome, Arc, Brave, Edge)\n\n"
+                     "TokenCoach only reads the claude.ai and chatgpt.com sign-ins, and only now "
+                     "or when your session expires."),
+            ok="Continue", cancel="Cancel",
+        ) != 1:
+            return
+        threading.Thread(target=self._follow_browser_lookup, daemon=True).start()
+
+    def _follow_browser_lookup(self):
+        """Background: look, then report on the main thread."""
+        from PyObjCTools import AppHelper
+        _providers.forget_cookie_lookup()
+        try:
+            cookie_str = _auto_detect_cookies(require_valid=True)
+        except Exception:
+            log.exception("browser login lookup failed")
+            cookie_str = None
+        AppHelper.callAfter(self._follow_browser_result, cookie_str,
+                            list(_providers.last_blocked_browsers))
+
+    def _follow_browser_result(self, cookie_str, blocked: list[str]):
+        """Main thread: finish, or say exactly what to do next."""
+        outcome = _onboarding.browser_access_outcome(bool(cookie_str), blocked)
+        if outcome == "ok":
+            self._signed_in(cookie_str)
+            return
+        if outcome == "blocked":
+            names = ", ".join(b.title() for b in blocked)
+            choice = rumps.alert(
+                title="macOS is still blocking TokenCoach",
+                message=(f"TokenCoach can\u2019t read {names} yet.\n\n"
+                         "Open Privacy & Security \u2192 Full Disk Access, turn on TokenCoach, "
+                         "then come back and click Check Again."),
+                ok="Open Settings", cancel="Use Sign-in Window", other="Check Again",
             )
         else:
-            _notify(
-                APP_NAME,
-                "Could not find claude.ai session in any browser",
-                "Make sure you are logged in to claude.ai in Chrome, Firefox, or Safari.",
+            choice = rumps.alert(
+                title="No Claude login found in your browsers",
+                message=("Sign in at claude.ai in your browser, then click Check Again. "
+                         "Or sign in once in TokenCoach\u2019s own window."),
+                ok="Check Again", cancel="Use Sign-in Window",
             )
+            choice = -1 if choice == 1 else choice
+        if choice == 1:
+            subprocess.Popen(["open",
+                              "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"])
+            # Settings takes focus; ask again so the person can check once done.
+            self._follow_browser_result(None, blocked)
+        elif choice == -1:
+            threading.Thread(target=self._follow_browser_lookup, daemon=True).start()
+        else:
+            self._sign_in(None)
+
+    def _explain_no_session(self, blocked: list[str]):
+        """Main thread: auto-detect found nothing; say why and offer the sign-in window."""
+        msg = "TokenCoach could not find a signed-in claude.ai session in your browsers."
+        if blocked:
+            names = ", ".join(b.title() for b in blocked)
+            msg += (f"\n\nmacOS blocked TokenCoach from reading {names}. Its privacy "
+                    "protection stops one app from reading another app's data.")
+        msg += "\n\nSigning in here takes a few seconds and needs no special permissions."
+        if rumps.alert(title="No Claude session found", message=msg,
+                       ok="Sign in to Claude\u2026", cancel="Cancel") == 1:
+            self._sign_in(None)

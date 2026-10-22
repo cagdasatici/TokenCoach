@@ -1,6 +1,7 @@
 # TokenCoach: a one-minute sample-data walkthrough
 
-Prepared 2026-10-05 for the v1.2.0 sharing draft. This shows development-channel
+Prepared 2026-10-05 for the v1.2.0 sharing draft; updated 2026-10-22 for the setup
+guide and sign-in window. This shows development-channel
 features; Homebrew v1.1.0 does not include all of them. Release acceptance and the
 Homebrew release are still pending.
 
@@ -8,10 +9,12 @@ Homebrew release are still pending.
 before/after changes below are synthetic. They illustrate the interface, not results
 from users or evidence that TokenCoach saves money.
 
-## 0:00–0:20 — See quota left and spot costly habits
+## 0:00–0:20 — Install, sign in, see quota left
 
 TokenCoach is a macOS menu bar app for people using Claude Code, Cowork or Codex.
-Open its dashboard to see quota **remaining**, a health summary and API-equivalent
+One Terminal command installs it; ◆ appears in the menu bar and a short setup
+guide opens. **Sign in to Claude…** shows claude.ai's own login page in a small
+window, with no macOS permission prompts; skipping it keeps local tracking. Then open its dashboard to see quota **remaining**, a health summary and API-equivalent
 cost per prompt. Switch between All, Claude and OpenAI, or change the date range to
 inspect the activity you care about.
 
@@ -37,12 +40,14 @@ it. No measured savings are claimed.
 
 ## 0:45–1:00 — Choose how to try it
 
-Local transcript tracking works without browser-cookie access. Claude Code can get
+Local transcript tracking works without signing in or browser-cookie access. The
+sign-in window keeps its own claude.ai login and sends those cookies only to
+claude.ai. Claude Code can get
 prompt nudges; Codex gets coaching through `AGENTS.md` lessons and has no prompt
 nudge hook. Analyze deeper and Improve send prompt content to Claude through your
 own CLI only when you click them. Quota endpoints can change or become unavailable.
 
-[Choose an installation route or run the sample-data demo](https://github.com/cagdasatici/TokenCoach#install).
+[Quick start, other installation routes and the sample-data demo](https://github.com/cagdasatici/TokenCoach#quick-start).
 Current source routes require macOS 12+ and Python 3.10+; the optional widget needs
 macOS 14+ and Xcode. The installation page distinguishes stable Homebrew v1.1.0
 from moving signed `main`; the DMG is deferred.
@@ -53,9 +58,12 @@ by Anthropic or OpenAI.
 ## Production notes for the sharing draft
 
 Reuse the existing TokenCoach name, diamond menu icon and dashboard styling.
-The two unmodified images above are the existing README sample-data assets, produced
+The two unmodified images above are the README sample-data assets, produced
 through `tokencoach.py --screenshots docs/images` using `tokencoach/demo.py`.
-Their visible “Sample data” badges were checked on 2026-10-05. Keep those badges and
+They were regenerated and their visible “Sample data” badges checked on 2026-10-22.
+Do not record or screenshot the sign-in window: it shows claude.ai's page and,
+once used, a real account. For the setup guide, use the `setup-*.png` images from the same
+command (drawn without any account) rather than recording it. Keep those badges and
 these captions visible; do not crop them out or present a before/after tile alone.
 Do not record the owner's live app, browser, prompts or account data.
 

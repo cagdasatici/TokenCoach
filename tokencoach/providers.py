@@ -90,6 +90,25 @@ def parse_cookie_string(raw: str) -> dict:
     return cookies
 
 
+def normalize_cookie_input(raw: str) -> str:
+    """Turn whatever the person pasted into a 'sessionKey=...; ...' string.
+
+    Accepts a bare sessionKey value, 'sessionKey=...', or a whole 'Cookie:'
+    header line (possibly spread over lines). Cloudflare cookies are dropped:
+    they are bound to the browser's fingerprint and cause 403s here.
+    Returns '' when nothing usable was pasted.
+    """
+    raw = " ".join((raw or "").split())
+    if raw.lower().startswith("cookie:"):
+        raw = raw[len("cookie:"):].strip()
+    raw = raw.strip("\"' ")
+    if not raw:
+        return ""
+    cookies = _strip_cf_cookies(parse_cookie_string(raw))
+    cookies = {k: v for k, v in cookies.items() if k and v}
+    return "; ".join(f"{k}={v}" for k, v in cookies.items())
+
+
 def _strip_cf_cookies(cookies: dict) -> dict:
     return {k: v for k, v in cookies.items() if k not in CF_COOKIE_KEYS}
 
@@ -881,7 +900,7 @@ def _claude_cookie_is_valid(cookie_str: str) -> bool:
         return False
 
 
-def _auto_detect_cookies() -> str | None:
+def _auto_detect_cookies(require_valid: bool = False) -> str | None:
     """Detect a *valid* claude.ai session cookie from the browser.
 
     Returns the first candidate (across all logged-in browsers) that actually
@@ -902,8 +921,9 @@ def _auto_detect_cookies() -> str | None:
     # Nothing validated (all logged out / expired). Fall back to the
     # best-ranked candidate so the existing 401/403 handling can surface a
     # "session expired" prompt to the user.
+    # require_valid: the caller is about to say "found it", so a dead one won't do.
     log.debug("no claude cookie candidate validated; using best-ranked")
-    return candidates[0]
+    return None if require_valid else candidates[0]
 
 
 def _auto_detect_chatgpt_cookies(exclude: set[str] | None = None) -> str | None:
