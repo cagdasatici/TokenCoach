@@ -1,29 +1,50 @@
 <p align="center">
-  <img src="assets/tokencoach-logo.png" alt="TokenCoach ribbon diamond logo" width="128" height="128">
+  <img src="assets/tokencoach-logo.png" alt="TokenCoach logo" width="200" height="200">
 </p>
 
 <h1 align="center">TokenCoach</h1>
 
 <p align="center">
-  <b>See what your AI prompts cost. Build better habits.</b><br>
-  A macOS menu bar app that shows the Claude and ChatGPT quota you have left, what each
-  Claude Code, Cowork and Codex prompt would cost at API prices, and coaches you out of costly habits.
+  <b>See what your AI prompts cost. Build better habits.</b>
 </p>
 
 <p align="center">
-  <a href="https://github.com/cagdasatici/TokenCoach/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/cagdasatici/TokenCoach/actions/workflows/test.yml/badge.svg"></a>
-  <a href="https://github.com/cagdasatici/TokenCoach/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/cagdasatici/TokenCoach"></a>
-  <a href="#quick-start"><img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-black?logo=apple"></a>
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"></a>
+  A macOS menu bar app for Claude Code, Cowork and Codex: quota left, cost per prompt, and coaching on costly habits.
 </p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
-  <img alt="TokenCoach dashboard with sample data: health state, quota left, habits, coach lessons with before/after and spending" src="docs/images/dashboard-light.png">
-</picture>
+<p align="center">
+  <a href="https://github.com/cagdasatici/TokenCoach/actions/workflows/test.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/cagdasatici/TokenCoach/test.yml?branch=main&style=flat&label=tests"></a>
+  <a href="https://github.com/cagdasatici/TokenCoach/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/cagdasatici/TokenCoach?style=flat&label=release"></a>
+  <a href="#quick-start"><img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-000000?style=flat&logo=apple&logoColor=white"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2ea44f?style=flat"></a>
+</p>
 
-<sub>All screenshots use the built-in sample data (`tokencoach --demo`). Dollar amounts are
-API-equivalent costs, not your subscription bill; Claude quota per prompt is an estimate.</sub>
+<p align="center">
+  <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
+  <a href="#features">Features</a> &nbsp;·&nbsp;
+  <a href="#privacy">Privacy</a> &nbsp;·&nbsp;
+  <a href="#faq">FAQ</a> &nbsp;·&nbsp;
+  <a href="docs/install.md">Install options</a>
+</p>
+
+<p align="center">
+  <a href="#quick-start"><img alt="Get started: install in one command" src="https://img.shields.io/badge/Get%20started-install%20in%20one%20command-1fbf8f?style=for-the-badge"></a>
+</p>
+
+<br>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
+    <img alt="TokenCoach dashboard with sample data: health state, quota left, habits, coach lessons with before/after and spending" src="docs/images/dashboard-light.png" width="880">
+  </picture>
+  <br>
+  <sub><b>Sample data</b> from the built-in demo (<code>tokencoach --demo</code>); all screenshots below use it too.</sub>
+</p>
+
+<p align="center">
+  <sub>Dollar amounts are API-equivalent costs, not your subscription bill. Claude quota per prompt is an estimate; unmeasured prompts show as unknown.</sub>
+</p>
 
 ---
 
@@ -54,7 +75,7 @@ More detail: [first-run guide](docs/first-run.md) · Other ways to install (Home
 > The one-line installer follows the signed `main` branch. Homebrew currently ships the stable
 > **v1.1.0**, which predates the sign-in window, the setup guide and yield tracking.
 
-## What it does
+## Features
 
 A $20–200 subscription feels flat until you hit the 5-hour limit mid-afternoon. The cause is
 rarely one big question; it's habits you can't see: long sessions where every reply re-reads
