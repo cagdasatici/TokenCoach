@@ -25,6 +25,16 @@ skipped, and nothing is changed until you choose it:
 4. **Connect Claude:** **Sign in to Claude…** opens a small sign-in window (no macOS permissions needed). **Skip** keeps local-only tracking. In the downloaded TokenCoach.app, **Use my browser's login** is the first choice: it walks through the two macOS prompts (access to other apps' data, then the browser's Keychain "Safe Storage") and, if macOS still blocks it, opens Privacy & Security → Full Disk Access with a **Check Again** button. Script and Homebrew installs don't offer it: they run as the shared Python, and allowing that would let every Python script read browser cookies. Their sign-in window keeps its own login, so signing in again is usually one click.
 5. **All set:** look for ◆ in your menu bar and click it any time.
 
+<p>
+  <img width="200" alt="Setup guide: Welcome to TokenCoach" src="images/setup-1-welcome.png">
+  <img width="200" alt="Setup guide: Claude Code nudges (optional)" src="images/setup-2-nudges.png">
+  <img width="200" alt="Setup guide: Connect Claude" src="images/setup-3-connect.png">
+  <img width="200" alt="Setup guide: All set" src="images/setup-4-done.png">
+</p>
+
+<sub>The guide as a new script install sees it (the icon is the Python app that runs TokenCoach),
+rendered by `tokencoach.py --screenshots` without any account.</sub>
+
 ### Signing in with the window
 
 The window shows claude.ai's own login page; TokenCoach never sees your password. **Continue with

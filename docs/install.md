@@ -66,8 +66,7 @@ Applied lessons remain in your `CLAUDE.md` / `AGENTS.md` files, even with `--pur
 `--purge` deletes the claude.ai cookies saved in TokenCoach's settings, but uninstalling does not
 clear the sign-in window's own login from WebKit's storage on your Mac.
 
-## Upgrading from AIQuotaBar or AIQuotaLeft
+## Upgrading from AIQuotaBar
 
-Run the one-line installer. It stops the old launch agents, watchdog and widget, moves your
-settings and quota history into TokenCoach, and removes the old `~/.ai-quota-bar` folder. Your data
-is kept. AIQuotaLeft installs that auto-update make this move by themselves on their next start.
+Run the one-line installer; it moves your settings and quota history into TokenCoach. Details in
+the [README FAQ](../README.md#faq).

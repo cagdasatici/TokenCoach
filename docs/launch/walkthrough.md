@@ -62,8 +62,8 @@ The two unmodified images above are the README sample-data assets, produced
 through `tokencoach.py --screenshots docs/images` using `tokencoach/demo.py`.
 They were regenerated and their visible “Sample data” badges checked on 2026-10-22.
 Do not record or screenshot the sign-in window: it shows claude.ai's page and,
-once used, a real account. Show the setup guide only from a fresh test account
-with no real sign-ins. Keep those badges and
+once used, a real account. For the setup guide, use the `setup-*.png` images from the same
+command (drawn without any account) rather than recording it. Keep those badges and
 these captions visible; do not crop them out or present a before/after tile alone.
 Do not record the owner's live app, browser, prompts or account data.
 

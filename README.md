@@ -40,6 +40,12 @@ You need a Mac with macOS 12 or newer.
 3. **Follow the setup guide** that opens by itself: **Get started**, then **Sign in to Claude…** and log in to
    claude.ai in the small window. Your remaining quota appears in the menu bar.
 
+<p align="center">
+  <img width="260" alt="Setup guide, first dialog: Welcome to TokenCoach, with Later and Get started" src="docs/images/setup-1-welcome.png">
+  &nbsp;
+  <img width="260" alt="Setup guide: Connect Claude, with Sign in to Claude… and Skip" src="docs/images/setup-3-connect.png">
+</p>
+
 Signing in is optional: without it, TokenCoach still tracks your local Claude Code, Cowork and
 Codex usage. Reopen the guide any time from the ⚙ menu → **Setup Guide…**.
 More detail: [first-run guide](docs/first-run.md) · Other ways to install (Homebrew, demo only):
@@ -168,6 +174,14 @@ or another method. If Google still refuses, the window offers **Use my browser i
   yet. When it ships, it is the only build that can follow your browser's login after you allow it.
 
 See the [install guide](docs/install.md) for Homebrew, the demo, uninstalling and upgrading.
+</details>
+
+<details>
+<summary><b>I used AIQuotaBar or AIQuotaLeft. How do I switch?</b></summary>
+
+Run the one-line installer. It stops the old launch agents, watchdog and widget, moves your
+settings and quota history into TokenCoach, and removes the old `~/.ai-quota-bar` folder. Your data
+is kept. AIQuotaLeft installs that auto-update make this move by themselves on their next start.
 </details>
 
 <details>

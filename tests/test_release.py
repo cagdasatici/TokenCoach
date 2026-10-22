@@ -118,6 +118,23 @@ class DemoSandbox(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 screenshots.capture(None, {}, "/tmp/nowhere")
 
+    def test_setup_guide_screenshots_change_nothing(self):
+        """The guide is drawn, not run: no sign-in window, no saved config, patches undone."""
+        from tokencoach import screenshots, signin, ui
+        real_alert, real_save = ui.rumps.alert, ui.save_config
+        with patch.object(screenshots, "_view_png") as draw, \
+                patch.object(signin, "open_window") as open_window, \
+                patch.object(ui, "save_config") as save:
+            written = screenshots.render_setup_guide("/tmp/nowhere")
+        self.assertEqual([os.path.basename(p) for p in written],
+                         ["setup-1-welcome.png", "setup-2-nudges.png",
+                          "setup-3-connect.png", "setup-4-done.png"])
+        self.assertEqual(draw.call_count, 4)
+        open_window.assert_not_called()
+        save.assert_not_called()
+        self.assertIs(ui.rumps.alert, real_alert)
+        self.assertIs(ui.save_config, real_save)
+
 
 class Packaging(unittest.TestCase):
     def test_no_prerename_names_outside_migration_code(self):
