@@ -204,10 +204,11 @@ auto-update make this move by themselves on their next start.
 
 1. **Install and launch.** Choose a route in [Install](#install). The script starts
    the app; with Homebrew, run `tokencoach &`. Look for ◆ in the macOS menu bar.
-2. **Connect quota if you want it.** Sign in at claude.ai or chatgpt.com, then choose
-   **Auto-detect from Browser** in the ⚙ menu. For a Chrome-family Keychain request,
-   choose **Allow**. You can skip browser access: local transcript tracking still works,
-   and ChatGPT quota can use an existing Codex CLI sign-in.
+2. **Connect quota if you want it.** The setup guide that opens on first launch offers
+   **Sign in to Claude…**: log in to claude.ai in a small built-in window (email or Google)
+   and TokenCoach saves the session once it works. Reopen it any time from the ⚙ menu. You
+   can skip it: local transcript tracking still works, and ChatGPT quota can use an existing
+   Codex CLI sign-in.
 3. **Open dashboard** from the menu bar panel. Start with **All** and the simple view.
    Give the first transcript scan time to finish; a large history can take longer.
 4. **Read your first result.** Quota percentages mean **remaining**, and dollar amounts
@@ -253,13 +254,15 @@ like its closest published sibling and labelled *estimated*. Override anything i
   only on `127.0.0.1`, behind a per-install key.
 - **What is read:** Claude Code transcripts (`~/.claude/projects`), Cowork logs, Codex sessions
   (`~/.codex/sessions`), commit messages, dates and file names (`git log`) of repositories you
-  chose to track, and, for the quota bars, your claude.ai / chatgpt.com session cookies
-  from your browser. For Chrome-family browsers macOS asks for Keychain access to read them
+  chose to track, and, for the quota bars, your claude.ai session from TokenCoach's own
+  sign-in window (kept in macOS's WebKit store for the app) or, if you choose **Auto-detect
+  from Browser**, your browsers' claude.ai / chatgpt.com session cookies. For Chrome-family
+  browsers macOS asks for Keychain access to read them
   (once per browser per lookup); click **Allow**, not **Always Allow**: the request comes from
   Apple's `security` tool, so Always Allow lets any program on your Mac read that key unasked.
   TokenCoach looks once at start and again only when you ask or a session expires, and never
   asks when macOS's privacy protection keeps it out of the browser's folder (then use
-  **Set Session Cookie…**). Without a ChatGPT browser session it uses the Codex CLI's own
+  **Sign in to Claude…**). Without a ChatGPT browser session it uses the Codex CLI's own
   sign-in (`~/.codex/auth.json`), read only, never copied, and sent only to chatgpt.com. Cookies
   are only ever sent to claude.ai / chatgpt.com, and never written to the log.
 - **Quota requests:** TokenCoach contacts provider usage endpoints to refresh quota and balance
@@ -288,8 +291,8 @@ like its closest published sibling and labelled *estimated*. Override anything i
 
 - **No ◆ in the menu bar:** `tail -50 ~/Library/Logs/TokenCoach/tokencoach.log`, then
   `bash ~/.tokencoach/tokencoach-doctor.sh` checks and repairs the moving parts.
-- **Quota bars empty:** log in at claude.ai / chatgpt.com in your browser, then
-  **Auto-detect from Browser** in the ⚙ menu.
+- **Quota bars empty, or ◆ ! in the menu bar:** your Claude sign-in is missing or expired.
+  Choose **Sign in to Claude…** in the ⚙ menu (or click the "sign-in expired" notification).
 - **Dashboard buttons do nothing:** open it from the menu bar icon; a saved copy is read-only.
 - **Command line:** `tokencoach --help` with Homebrew, otherwise
   `~/.tokencoach/.venv/bin/python ~/.tokencoach/tokencoach.py --help` (`--ledger`, `--dashboard`,

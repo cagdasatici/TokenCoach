@@ -154,6 +154,8 @@ class Packaging(unittest.TestCase):
         allowed = {"install.sh", "claude_bar.py", "tokencoach/legacy.py", "tokencoach/config.py",
                    "tokencoach/ledger.py", "tests/test_release.py", "AGENTS.md", "README.md", "LICENSE",
                    "tokencoach/ui.py", "docs/plans/2026-09-29-remaining-release-work.md",
+                   # Its "Upgrading from AIQuotaBar or AIQuotaLeft" note, like README's.
+                   "docs/user-guide.md",
                    # Historical paths and launch-agent names are acceptance evidence.
                    "docs/release-acceptance-1.2.0.md"}
         files = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
