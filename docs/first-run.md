@@ -1,15 +1,14 @@
 # First run: install to first result
 
-This guide describes the current `main` channel. Homebrew currently ships v1.1.0, which
-predates the setup guide, the sign-in window and yield tracking. The downloaded app is deferred.
+This guide describes v1.2.0, which both the one-line installer (`main`) and Homebrew provide.
+The downloaded app is deferred.
 See [installation options and requirements](install.md).
 
 ## 1. Install and launch
 
 Run the one command in the README's [Quick start](../README.md#quick-start) in Terminal. It numbers its progress ("[1/4] Checking your Mac…"), explains in
 plain words anything missing (Python 3.10+, git) and ends by telling you to look for
-◆ in the menu bar. Homebrew and the demo are alternatives (Homebrew ships v1.1.0,
-which lacks the setup guide). The core app requires macOS 12+; the optional widget needs
+◆ in the menu bar. Homebrew and the demo are alternatives. The core app requires macOS 12+; the optional widget needs
 macOS 14+ and Xcode.
 
 If the icon is missing, follow [Troubleshooting](../README.md#troubleshooting).

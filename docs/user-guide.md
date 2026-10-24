@@ -144,9 +144,8 @@ period with an earlier one measured the same way, not with an absolute target.
 
 ## Install
 
-The documentation below describes the `main` development channel. The Homebrew
-formula currently ships **v1.1.0**; features added after that release, including yield
-tracking, require `main` until v1.2.0 is accepted and published. Homebrew is the
+The documentation below describes v1.2.0, which the Homebrew formula ships; the
+script install follows signed `main`, which may be ahead of it. Homebrew is the
 primary distribution route. The packaged DMG is deferred; no Apple Developer
 membership is required for the Homebrew or script installation.
 
@@ -158,8 +157,8 @@ brew install tokencoach
 tokencoach &          # first run adds it to your login items
 ```
 Homebrew updates through `brew update && brew upgrade tokencoach`; the app does
-not run its git updater for Homebrew installations. This currently installs v1.1.0.
-When v1.2.0 is published, run `tokencoach &` once after upgrading from v1.1.0 so
+not run its git updater for Homebrew installations. This installs v1.2.0. After
+upgrading from v1.1.0, run `tokencoach &` once so
 it can repair the login item that points at the removed version folder.
 
 **Script install — moving `main` channel** (also sets up start-at-login and the optional desktop widget):

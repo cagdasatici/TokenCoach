@@ -17,8 +17,8 @@ Please allow time for investigation and coordinate disclosure through the privat
 
 ## How TokenCoach handles your logins
 
-This describes the code on the current `main` channel. Homebrew v1.1.0 predates the sign-in
-window and the setup guide.
+This describes v1.2.0 and the current `main` channel. Older Homebrew installs (v1.1.0)
+predate the sign-in window and the setup guide; `brew upgrade tokencoach` brings them up to date.
 
 **Built-in sign-in window** (`tokencoach/signin.py`). **Sign in to Claude…** opens a window that
 loads `https://claude.ai/login` in Apple's WebKit. It uses WebKit's default persistent storage for

@@ -72,8 +72,8 @@ Codex usage. Reopen the guide any time from the ⚙ menu → **Setup Guide…**.
 More detail: [first-run guide](docs/first-run.md) · Other ways to install (Homebrew, demo only):
 [install guide](docs/install.md).
 
-> The one-line installer follows the signed `main` branch. Homebrew currently ships the stable
-> **v1.1.0**, which predates the sign-in window, the setup guide and yield tracking.
+> The one-line installer follows the signed `main` branch. Homebrew ships the stable release,
+> **v1.2.0**, which includes the sign-in window, the setup guide and yield tracking.
 
 ## Features
 
@@ -189,8 +189,7 @@ or another method. If Google still refuses, the window offers **Use my browser i
 
 - **One-line installer** (recommended today): the latest signed `main`, with the setup guide and
   sign-in window, start-at-login, auto-update to signed commits, and the optional widget.
-- **Homebrew**: the stable v1.1.0 release, updated with `brew upgrade`. It lacks the newer features
-  until the next release is published.
+- **Homebrew**: the stable v1.2.0 release, updated with `brew upgrade`.
 - **Downloaded TokenCoach.app**: packaging exists but the download is deferred and not available
   yet. When it ships, it is the only build that can follow your browser's login after you allow it.
 

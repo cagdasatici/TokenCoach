@@ -1,8 +1,8 @@
 class Tokencoach < Formula
   desc "Menu bar coach for what Claude and ChatGPT prompts cost and how to spend less"
   homepage "https://github.com/cagdasatici/TokenCoach"
-  url "https://github.com/cagdasatici/TokenCoach/releases/download/v1.1.0/TokenCoach-1.1.0.tar.gz"
-  sha256 "51ae228067ade31058aed01a7b662161c34c17139ea570e47f9eeaeb6486094d"
+  url "https://github.com/cagdasatici/TokenCoach/releases/download/v1.2.0/TokenCoach-1.2.0.tar.gz"
+  sha256 "e09785cb2e0cd9c625a2176fdffc8e90226222917dd014191e93c98b067eb7e7"
   license "MIT"
   head "https://github.com/cagdasatici/TokenCoach.git", branch: "main"
 

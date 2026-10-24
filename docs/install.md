@@ -31,8 +31,7 @@ brew install tokencoach
 tokencoach &          # first run adds it to your login items
 ```
 
-The formula currently ships **v1.1.0**, which predates the sign-in window, the setup guide and
-yield tracking; those need the one-line installer until the next release is published. Homebrew
+The formula ships **v1.2.0**, with the sign-in window, the setup guide and yield tracking. Homebrew
 installs update with `brew update && brew upgrade tokencoach`; the app's git updater does not run.
 After upgrading from v1.1.0 to a later release, run `tokencoach &` once so it can repair the login
 item that points at the removed version folder. Release procedure:
