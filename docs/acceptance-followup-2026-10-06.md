@@ -5,6 +5,31 @@ fix described below. Existing owner observations and waivers in
 [release acceptance](release-acceptance-1.2.0.md) remain authoritative.
 This record does not replace missing human or platform acceptance.
 
+## Launch follow-up on signed base `9eccdeb`
+
+On 2026-10-06 the owner waived outside-tester validation and requested full
+launch. No testers were recruited and no tester results are claimed. This
+decision does not waive the remaining live PS2/PS9 checks.
+
+The current base `9eccdeb2eeb3565d373886e372a12aa0779b5b1e` verifies against
+`allowed_signers`. The complete local suite passes: **312 tests** with loopback
+binding permitted, with the existing non-failing log-file ResourceWarning.
+The restricted first attempt failed six listener checks because loopback binding
+was denied; the permitted rerun passed. Fresh sample HTML generated with
+`TOKENCOACH_DEMO=1` in a dedicated temporary directory passes
+`tests/dashboard_refresh.cjs` (refresh, health, filters, scroll, deferred/late
+edit protection and outage recovery). These remain automated synthetic checks.
+
+GitHub confirms success for `01c087495fe823732d71592eb89b39dda2e032a6` in
+[CI run 37510145681](https://github.com/cagdasatici/TokenCoach/actions/runs/37510145681).
+The newer base's [CI run 37511990508](https://github.com/cagdasatici/TokenCoach/actions/runs/37511990508)
+subsequently completed successfully. An extracted `git archive` of this base
+reports `TokenCoach 1.2.0.dev0 (9eccdeb2eeb3)`, establishing archive revision
+substitution, not final release identity. A clean signed commit setting version
+1.2.0 and its CI are still needed before publication. TokenCoach is unavailable in the native
+computer-use app inventory, so actual menu/widget acceptance cannot be claimed
+from that tool. Publication has not occurred.
+
 ## CI
 
 GitHub reports success for the published base revision:

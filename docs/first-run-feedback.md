@@ -1,8 +1,11 @@
 # First-run feedback — PS5
 
-Status: **prepared; no outside testers recruited or results recorded**.
-PS5 acceptance remains open until 3–5 consenting outside testers use the guide
-without live coaching and reproducible first-run blockers are resolved.
+Status: **outside-tester gate waived by the owner on 2026-10-06**.
+The owner instructed: “none - we go full launch from the get go”. No testers
+were recruited, no outreach was sent, and no outside results are claimed.
+The guide and optional feedback procedure remain available after launch.
+This decision removes the PS5 outside-validation gate; it does not establish
+usability acceptance or waive remaining PS2/PS9 release checks.
 
 ## Invitation to send after selecting consenting testers
 

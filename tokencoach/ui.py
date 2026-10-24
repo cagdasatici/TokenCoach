@@ -1718,9 +1718,24 @@ class _UsagePanel:
 
     def _render_header(self, parent, x, y, w, h, NSTextField, NSFont,
                        NSColor, NSButton, NSMakeRect, NSTextAlignmentLeft):
-        """Render: 'TokenCoach' title + gear + share buttons."""
+        """Render the TokenCoach logo/title and share/settings buttons."""
+        from AppKit import NSImage, NSImageView, NSImageScaleProportionallyUpOrDown
+
+        title_x = x
+        logo = NSImage.alloc().initWithContentsOfFile_(
+            os.path.join(_ICON_DIR, "tokencoach-logo-small.png"))
+        if logo:
+            size = 22
+            image_view = NSImageView.alloc().initWithFrame_(
+                NSMakeRect(x, y + (h - size) / 2, size, size))
+            image_view.setImage_(logo)
+            image_view.setImageScaling_(NSImageScaleProportionallyUpOrDown)
+            parent.addSubview_(image_view)
+            title_x += size + 8
+
         # Title
-        title = NSTextField.alloc().initWithFrame_(NSMakeRect(x, y, w - 60, h))
+        title = NSTextField.alloc().initWithFrame_(
+            NSMakeRect(title_x, y, w - 60 - (title_x - x), h))
         title.setStringValue_(APP_NAME)
         title.setBezeled_(False)
         title.setDrawsBackground_(False)
@@ -1939,6 +1954,9 @@ class TokenCoachApp(rumps.App):
         self._prev_pcts: dict[str, int] = {}  # previous pct per row key (reset detection)
         self._auth_fail_count = 0
         self._expired_notified = False        # one "session expired" notice per expiry
+        # Why Claude has no reading ("!" sign in, "err", "?"); drawn by _apply, so a
+        # ChatGPT-only refresh can't hide that Claude needs attention.
+        self._claude_alert = ""
         self._chatgpt_cookie_retry_after = 0.0
         # Providers whose cookies were looked for unasked this run. Reading
         # Chromium cookies needs the browser's Keychain key, so with nothing
@@ -2791,7 +2809,12 @@ class TokenCoachApp(rumps.App):
 
     def _fetch_and_update(self):
         retry_now = False      # fresh cookies found: fetch again once this one has finished
+        published = False
+        self._provider_data = []
         try:
+            # Each provider must refresh even if Claude has no valid session.
+            self._fetch_providers()
+            self._check_provider_warnings(self._provider_data)
             with self._config_lock:
                 sk = self.config.get("cookie_str")
             if not sk and "claude" not in self._auto_detected:
@@ -2802,20 +2825,19 @@ class TokenCoachApp(rumps.App):
                         self.config["cookie_str"] = sk
                         save_config(self.config)
             if not sk:
-                self._post_title("\u25c6 !")      # not signed in: needs the person
-                self._fetching = False
+                self._claude_alert = "!"      # not signed in: needs the person
+                self._post_title("\u25c6 !")
                 return
             raw = fetch_raw(sk)
             self._last_raw = raw
             self._auth_fail_count = 0
             self._expired_notified = False
+            self._claude_alert = ""
             data = parse_usage(raw)
             self._last_data = data
             self._last_updated = datetime.now()
             log.debug("parsed UsageData: %s", data)
             self._check_warnings(data)
-            self._fetch_providers()
-            self._check_provider_warnings(self._provider_data)
             self._cc_stats = fetch_claude_code_stats()
 
             # -- record usage history --
@@ -2860,6 +2882,8 @@ class TokenCoachApp(rumps.App):
             _write_widget_cache(data, self._provider_data, self._cc_stats, self.config,
                                 windows=health.windows_from(data, self._provider_data, self._history))
 
+            published = True
+
             # -- silent auto-update --
             if time.time() - self._last_update_check > UPDATE_CHECK_INTERVAL:
                 self._last_update_check = time.time()
@@ -2874,6 +2898,7 @@ class TokenCoachApp(rumps.App):
             log.error("HTTP error: %s (status=%s)", e, code, exc_info=True)
             if code in (401, 403):
                 self._auth_fail_count += 1
+                self._claude_alert = "!"
                 self._post_title("\u25c6 !")
                 if self._auth_fail_count >= 2:
                     self._auth_fail_count = 0
@@ -2898,12 +2923,25 @@ class TokenCoachApp(rumps.App):
                             data={"action": "signin"},
                         )
             else:
+                self._claude_alert = "err"
                 self._post_title("\u25c6 err")
         except Exception:
             log.exception("fetch failed")
+            self._claude_alert = "?"
             self._post_title("\u25c6 ?")
         finally:
-            self._fetching = False
+            try:
+                if not published:
+                    # Do not stamp an old Claude reading as fresh alongside
+                    # current ChatGPT data. Errors stay in the provider rows.
+                    unavailable = UsageData()
+                    self._last_data = unavailable
+                    self._post_data(unavailable)
+                    _write_widget_cache(
+                        unavailable, self._provider_data, self._cc_stats, self.config,
+                        windows=health.windows_from(unavailable, self._provider_data, self._history))
+            finally:
+                self._fetching = False
         if retry_now:
             self._schedule_fetch()
 
@@ -3048,7 +3086,8 @@ class TokenCoachApp(rumps.App):
     }
 
     def _set_bar_title(self, provider_segments: list[tuple[str, int, str]],
-                       cc_msgs: int | None = None, states: dict | None = None):
+                       cc_msgs: int | None = None, states: dict | None = None,
+                       prefix: str = ""):
         """Multi-indicator attributed title with brand logo icons.
 
         provider_segments: list of (provider_name, pct, extra_suffix)
@@ -3076,6 +3115,9 @@ class TokenCoachApp(rumps.App):
             base = {NSFontAttributeName: font} if font else {}
 
             s = NSMutableAttributedString.alloc().initWithString_("",)
+            if prefix:      # why Claude has no reading, e.g. "\u25c6 !"
+                s.appendAttributedString_(
+                    NSAttributedString.alloc().initWithString_attributes_(prefix + "   ", base))
 
             for i, (name, pct, suffix) in enumerate(provider_segments):
                 cfg = self._BAR_PROVIDERS.get(name, {})
@@ -3120,7 +3162,7 @@ class TokenCoachApp(rumps.App):
         except Exception as e:
             log.debug("_set_bar_title failed: %s", e)
         # Plain-text fallback
-        parts = []
+        parts = [prefix] if prefix else []
         for name, pct, suffix in provider_segments:
             cfg = self._BAR_PROVIDERS.get(name, {})
             sym = cfg.get("sym", "\u25cf")
@@ -3141,6 +3183,10 @@ class TokenCoachApp(rumps.App):
             return None
         rows = getattr(pd, "_rows", None)
         if rows:
+            if pd.name == "ChatGPT":
+                primary = next((r for r in rows if r.label == "5-hour"), None)
+                if primary is not None:
+                    return primary.pct
             immediate = [
                 r for r in rows
                 if r.label != "Weekly" and not r.label.endswith("(Weekly)")
@@ -3157,10 +3203,13 @@ class TokenCoachApp(rumps.App):
         self._quota_health = health.quota_health(
             health.windows_from(data, self._provider_data, self._history))
         primary = data.session or data.weekly_all or data.weekly_sonnet
-        if primary:
+        alert = getattr(self, "_claude_alert", "")
+        marker = f"\u25c6 {alert}" if alert and not primary else ""
+        if primary or self._provider_data:
             # Collect all available segments
             available: dict[str, tuple[str, int, str]] = {}
-            available["Claude"] = ("Claude", primary.pct, "")
+            if primary:
+                available["Claude"] = ("Claude", primary.pct, "")
             for pd in self._provider_data:
                 bar_pct = self._provider_bar_pct(pd)
                 if bar_pct is not None:
@@ -3179,11 +3228,15 @@ class TokenCoachApp(rumps.App):
             if self._cc_stats:
                 cc_msgs = self._cc_stats.get("week_messages")
 
-            self._set_bar_title(segments, cc_msgs=cc_msgs, states={
-                "Claude": self._quota_health["providers"].get("claude"),
-                "ChatGPT": self._quota_health["providers"].get("codex")})
+            if segments:
+                self._set_bar_title(segments, cc_msgs=cc_msgs, prefix=marker, states={
+                    "Claude": self._quota_health["providers"].get("claude"),
+                    "ChatGPT": self._quota_health["providers"].get("codex")})
+            else:
+                # Every provider errored: an empty title would hide the item.
+                self.title = marker or "\u25c6"
         else:
-            self.title = "\u25c6"
+            self.title = marker or "\u25c6"
         self._rebuild_menu(data)
         # Refresh the floating panel if it's currently visible
         try:

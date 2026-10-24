@@ -189,7 +189,9 @@ Python unit tests alone do not satisfy this gate. Publishing remains PS3's final
 
 ### PS5 — Make the first five minutes clear
 
-Status: **guide and feedback procedure implemented; outside validation pending**.
+Status: **guide and feedback procedure implemented; outside validation owner-waived on 2026-10-06**.
+The owner chose immediate launch without recruiting testers. No outside-test
+evidence exists; this waiver does not close PS2/PS9 acceptance.
 See [first-run guide](../first-run.md) and [feedback record](../first-run-feedback.md).
 
 - [x] Add a short install → launch → quota access → dashboard → first result guide.

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		BC92D665407A4E55A0000001 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = BC92D665407A4E55A0000002 /* InfoPlist.strings */; };
 		19F4EEEBA538AEC1415CC650 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB450644C74BC4071CC1F103 /* Assets.xcassets */; };
 		31FBDBDA5CF9BDA0683B2782 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C5785927068F27A3AF5BDB6 /* WidgetKit.framework */; };
 		34E4867EA7AF563BAAFDB8DC /* TokenCoachWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B05C7BB3FDD482BBF751DE38 /* TokenCoachWidgetExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -48,6 +49,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		BC92D665407A4E55A0000003 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		0A4C07E8F11E4733411143EE /* WidgetEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetEntry.swift; sourceTree = "<group>"; };
 		F2E1D0C9B8A7F6E5D4C3B2A1 /* AIProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProvider.swift; sourceTree = "<group>"; };
 		1C5785927068F27A3AF5BDB6 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = WidgetKit.framework; sourceTree = "<group>"; };
@@ -91,6 +93,7 @@
 			isa = PBXGroup;
 			children = (
 				D9790248391E20390BDB1FC5 /* TokenCoachWidgetApp.swift */,
+				BC92D665407A4E55A0000002 /* InfoPlist.strings */,
 				8BAEC816D7A0E6B8B5CD88E8 /* Assets.xcassets */,
 				A180F3D85DF3DDF354631701 /* ContentView.swift */,
 			);
@@ -210,6 +213,15 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXVariantGroup section */
+        BC92D665407A4E55A0000002 /* InfoPlist.strings */ = {
+            isa = PBXVariantGroup;
+            children = (BC92D665407A4E55A0000003 /* en */,);
+            name = InfoPlist.strings;
+            sourceTree = "<group>";
+        };
+/* End PBXVariantGroup section */
+
 /* Begin PBXResourcesBuildPhase section */
 		10C8EB7340DB798CC22F31C8 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
@@ -224,6 +236,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6FF5477DC9C57D793AD5C322 /* Assets.xcassets in Resources */,
+				BC92D665407A4E55A0000001 /* InfoPlist.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -440,6 +453,7 @@
 				CURRENT_PROJECT_VERSION = 3;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = TokenCoachWidget;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -459,6 +473,7 @@
 				CURRENT_PROJECT_VERSION = 3;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = TokenCoachWidget;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

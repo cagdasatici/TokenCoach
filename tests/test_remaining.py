@@ -360,5 +360,96 @@ class CursorRemoval(unittest.TestCase):
         self.assertNotIn('"cursor"', widget)
 
 
+class ChatGPTQuotaRegression(unittest.TestCase):
+    def test_session_drives_bar_and_provider_with_exhausted_other_buckets(self):
+        from tokencoach.providers import _parse_wham_usage
+        from tokencoach.ui import TokenCoachApp
+        from tokencoach.health import windows_from
+        pd = _parse_wham_usage({
+            "rate_limit": CodexWeeklyLimit._bucket(17, 100),
+            "code_review_rate_limit": CodexWeeklyLimit._bucket(100, 100),
+        })
+        self.assertEqual(pd.pct, 17)
+        self.assertEqual(TokenCoachApp._provider_bar_pct(None, pd), 17)
+        windows = windows_from(None, [pd])
+        self.assertEqual([w["left"] for w in windows], [83, 0])
+
+    def test_missing_or_invalid_percentage_is_never_full_quota(self):
+        from tokencoach.providers import _parse_wham_usage
+        for value in (None, True, "12", -1, 101, float("nan"), float("inf")):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                _parse_wham_usage({"rate_limit": {"primary_window": {
+                    "used_percent": value, "reset_at": 4102444800}}})
+        with self.assertRaises(ValueError):
+            _parse_wham_usage({"rate_limit": {"primary_window": {"reset_at": 4102444800}}})
+
+    def test_fractional_percentage_rounds_instead_of_truncating(self):
+        from tokencoach.providers import _parse_wham_window
+        self.assertEqual(_parse_wham_window({"used_percent": 12.9}, "5-hour").pct, 13)
+
+    def test_claude_missing_or_failed_still_publishes_current_chatgpt(self):
+        import threading
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from tokencoach.providers import ProviderData, LimitRow, UsageData
+        from tokencoach.ui import TokenCoachApp
+        for cookie in (None, "example"):
+            with self.subTest(cookie=cookie):
+                current = ProviderData("ChatGPT", _rows=[LimitRow("5-hour", 17, ""),
+                                                         LimitRow("Weekly", 3, "")])
+                app = SimpleNamespace(
+                    config={"cookie_str": cookie}, _config_lock=threading.Lock(),
+                    _auto_detected={"claude"}, _provider_data=[], _cc_stats=None,
+                    _history={}, _fetching=True, _last_data=UsageData(session=LimitRow("5-hour", 5, "")),
+                    _post_title=Mock(), _post_data=Mock(), _check_provider_warnings=Mock())
+                app._fetch_providers = Mock(side_effect=lambda: setattr(app, "_provider_data", [current]))
+                with patch("tokencoach.ui.fetch_raw", side_effect=RuntimeError("offline")), \
+                     patch("tokencoach.ui._write_widget_cache") as write, \
+                     patch("tokencoach.ui.log"):
+                    TokenCoachApp._fetch_and_update(app)
+                app._fetch_providers.assert_called_once()
+                self.assertFalse(app._fetching)
+                self.assertIsNone(app._post_data.call_args.args[0].session)
+                self.assertEqual(write.call_args.args[1], [current])
+                self.assertEqual([w["left"] for w in write.call_args.kwargs["windows"]], [83, 97])
+
+    def test_chatgpt_bar_renders_without_claude(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from tokencoach.providers import ProviderData, LimitRow, UsageData
+        from tokencoach.ui import TokenCoachApp
+        app = SimpleNamespace(
+            _provider_data=[ProviderData("ChatGPT", _rows=[LimitRow("5-hour", 17, "")])],
+            _history={}, config={}, _cc_stats=None, _panel=None,
+            _BAR_PRIORITY=TokenCoachApp._BAR_PRIORITY,
+            _set_bar_title=Mock(), _rebuild_menu=Mock())
+        app._provider_bar_pct = lambda pd: TokenCoachApp._provider_bar_pct(app, pd)
+        TokenCoachApp._apply(app, UsageData())
+        self.assertEqual(app._set_bar_title.call_args.args[0], [("ChatGPT", 17, "")])
+
+    def test_claude_alert_survives_a_chatgpt_only_refresh(self):
+        """Found merging the ChatGPT fix with the expired-session fix: publishing
+        ChatGPT without Claude redrew the bar and dropped the "◆ !" that says
+        Claude needs signing in again. An all-error refresh left an empty title."""
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from tokencoach.providers import ProviderData, LimitRow, UsageData
+        from tokencoach.ui import TokenCoachApp
+        def app_with(providers, alert):
+            app = SimpleNamespace(
+                _provider_data=providers, _history={}, config={}, _cc_stats=None, _panel=None,
+                _claude_alert=alert, _BAR_PRIORITY=TokenCoachApp._BAR_PRIORITY, title="",
+                _set_bar_title=Mock(), _rebuild_menu=Mock())
+            app._provider_bar_pct = lambda pd: TokenCoachApp._provider_bar_pct(app, pd)
+            TokenCoachApp._apply(app, UsageData())
+            return app
+        app = app_with([ProviderData("ChatGPT", _rows=[LimitRow("5-hour", 17, "")])], "!")
+        self.assertEqual(app._set_bar_title.call_args.kwargs["prefix"], "\u25c6 !")
+        app = app_with([ProviderData("ChatGPT", error="offline")], "!")
+        self.assertEqual(app.title, "\u25c6 !")
+        app = app_with([ProviderData("ChatGPT", error="offline")], "")
+        self.assertEqual(app.title, "\u25c6")
+
+
 if __name__ == "__main__":
     unittest.main()

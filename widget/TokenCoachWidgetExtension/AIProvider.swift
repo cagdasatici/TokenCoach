@@ -110,8 +110,10 @@ extension AIProvider {
                 return ProviderDisplayData(mainPct: 0, rows: [], error: err, extraInfo: nil, isConfigured: true)
             }
             if let rows = snap.chatgpt.rows {
-                let maxPct = rows.map(\.pct).max() ?? 0
-                return ProviderDisplayData(mainPct: maxPct, rows: rows, error: nil, extraInfo: nil, isConfigured: true)
+                let mainPct = rows.first(where: { $0.label == "5-hour" })?.pct
+                    ?? rows.first(where: { $0.label == "Weekly" })?.pct
+                    ?? rows.first?.pct ?? 0
+                return ProviderDisplayData(mainPct: mainPct, rows: rows, error: nil, extraInfo: nil, isConfigured: true)
             }
             return ProviderDisplayData(mainPct: 0, rows: [], error: nil, extraInfo: nil, isConfigured: false)
 

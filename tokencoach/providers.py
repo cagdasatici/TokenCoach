@@ -419,7 +419,12 @@ def _parse_wham_window(pw: dict | None, label: str) -> LimitRow | None:
     """Parse a single primary/secondary window dict into a LimitRow."""
     if not pw or not isinstance(pw, dict):
         return None
-    pct = min(100, int(pw.get("used_percent", 0)))
+    value = pw.get("used_percent")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("Invalid ChatGPT usage percentage")
+    if not math.isfinite(value) or not 0 <= value <= 100:
+        raise ValueError("Invalid ChatGPT usage percentage")
+    pct = round(value)
     reset_str = _fmt_reset(pw.get("reset_at")) if pw.get("reset_at") else ""
     return LimitRow(label, pct, reset_str, _reset_epoch(pw.get("reset_at")))
 
@@ -457,7 +462,6 @@ def _parse_wham_usage(data: dict) -> ProviderData:
       rate_limit.{primary,secondary}_window.reset_at  (Unix timestamp)
       code_review_rate_limit  -- same structure
     """
-    log.debug("wham/usage raw: %s", json.dumps(data, indent=2))
 
     rows: list[LimitRow] = []
 
@@ -477,8 +481,8 @@ def _parse_wham_usage(data: dict) -> ProviderData:
     if not rows:
         return ProviderData("ChatGPT", error="No rate limit data in response")
 
-    worst = max(rows, key=lambda r: r.pct)
-    pd = ProviderData("ChatGPT", spent=float(worst.pct), limit=100.0, currency="")
+    primary = next((r for r in rows if r.label == "5-hour"), rows[0])
+    pd = ProviderData("ChatGPT", spent=float(primary.pct), limit=100.0, currency="")
     pd._rows = rows
     return pd
 

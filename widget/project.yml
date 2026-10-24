@@ -26,6 +26,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.cagdasatici.tokencoach.widget
         CODE_SIGN_ENTITLEMENTS: TokenCoachWidget/TokenCoachWidget.entitlements
         INFOPLIST_KEY_LSUIElement: true
+        INFOPLIST_KEY_CFBundleDisplayName: TokenCoachWidget
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: "YES"
         MARKETING_VERSION: "1.2"
         CURRENT_PROJECT_VERSION: "3"
@@ -46,7 +48,7 @@ targets:
     info:
       path: TokenCoachWidgetExtension/Info.plist
       properties:
-        CFBundleDisplayName: TokenCoachWidget
+        CFBundleDisplayName: TokenCoach Widget
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:

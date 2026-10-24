@@ -3,11 +3,13 @@ import SwiftUI
 struct ContentView: View {
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "gauge.with.dots.needle.33percent")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
+            Image("BrandMark")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 80, height: 80)
+                .accessibilityLabel("TokenCoach")
 
-            Text("AI Quota Widget")
+            Text("TokenCoach Widget")
                 .font(.title2.bold())
 
             Text("Add the widget to your desktop or Notification Center.")
@@ -21,7 +23,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Right-click your desktop", systemImage: "cursorarrow.click.2")
                 Label("Select \"Edit Widgets...\"", systemImage: "slider.horizontal.3")
-                Label("Search for \"AI Quota\"", systemImage: "magnifyingglass")
+                Label("Search for \"TokenCoach\"", systemImage: "magnifyingglass")
             }
             .font(.callout)
             .foregroundStyle(.secondary)

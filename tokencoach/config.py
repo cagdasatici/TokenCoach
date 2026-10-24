@@ -132,11 +132,12 @@ if _MIGRATED:
 # ── paths & thresholds ───────────────────────────────────────────────────────
 
 REFRESH_INTERVALS = {
+    "30 sec": 30,
     "1 min":  60,
     "5 min":  300,
     "15 min": 900,
 }
-DEFAULT_REFRESH = 300
+DEFAULT_REFRESH = 60
 
 WARN_THRESHOLD = 80   # notify when any limit crosses this %
 CRIT_THRESHOLD = 95   # title turns red emoji above this %

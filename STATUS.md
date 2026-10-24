@@ -20,4 +20,4 @@ backlog: docs/plans/2026-09-29-remaining-release-work.md
 ## Needs you
 - A logout/login is owner-waived; no logout action requested
 - H: sign in to Claude in a browser, sign out, network off for a refresh cycle
-- Optional TC4: find 3-5 consenting testers, or drop it
+- Optional TC4/PS5: owner dropped outside-tester validation on 2026-10-06; no results claimed
