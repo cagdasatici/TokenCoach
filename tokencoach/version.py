@@ -5,7 +5,7 @@ import sys
 import json
 
 # Set to the release number before tagging; development builds stay explicit.
-VERSION = "1.2.0.dev0"
+VERSION = "1.2.0"
 # git archive fills this in, preserving identity in Homebrew release archives.
 ARCHIVE_REVISION = "$Format:%H$"
 

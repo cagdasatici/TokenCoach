@@ -5,6 +5,7 @@ backlog: docs/plans/2026-09-29-remaining-release-work.md
 ---
 
 ## Next
+- 2026-10-24: owner chose to tag and publish v1.2.0 from signed main without completing the open acceptance paths (C dependencies/visible restart, D visible duplicate + legacy ledger/widget, G widget refresh, H sign-in transitions). Re-run them against v1.2.0 and patch-release if anything fails
 - A/E candidate rechecks recorded on db47d43: install probes, visible menu/dashboard and both uninstall modes pass; logout/login owner-waived (not run)
 - Path D synthetic settings/history/agents/cron migration probes pass; visible duplicate check and legacy ledger/widget coverage remain open
 - Path C git probes pass: real v1.1.0 fast-forward to db47d43, schema 1 → 5, all synthetic rows/lessons/files/settings preserved; signed updater hop also passes. Dependencies and visible app restart still need live verification
