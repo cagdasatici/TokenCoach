@@ -3,21 +3,31 @@ name: tests
 on:
   push:
     branches: [main]
+    paths-ignore: ['**.md', 'docs/**']
   pull_request:
+    paths-ignore: ['**.md', 'docs/**']
 
 permissions:
   contents: read
 
+# macOS runners bill at 10x Linux. Cancel superseded runs on the same ref.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    # Tests import rumps/pyobjc, so Linux is not an option.
     runs-on: macos-latest
     strategy:
       matrix:
-        python: ["3.10", "3.12"]
+        # PRs: one Python. main: full matrix.
+        python: ${{ github.event_name == 'pull_request' && fromJSON('["3.12"]') || fromJSON('["3.10", "3.12"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+          cache: pip
       - run: python -m pip install -r requirements.txt
       - run: python -m unittest discover -s tests -v
