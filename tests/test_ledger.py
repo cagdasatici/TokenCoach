@@ -136,6 +136,15 @@ class Pricing(unittest.TestCase):
         self.assertEqual(ledger.equivalent_model("gpt-6-nova"), "gpt-6-astra")
         self.assertIsNone(ledger.equivalent_model("claude-sonnet-5"))
 
+    def test_new_claude_releases_fall_back_to_their_family(self):
+        self.assertEqual(ledger.equivalent_model("claude-haiku-5-5"), "claude-haiku-4")
+        self.assertEqual(ledger.equivalent_model("claude-opus-6"), "claude-opus-5-5")
+        self.assertEqual(ledger.equivalent_model("claude-sonnet-6-20270101"), "claude-sonnet-5")
+        self.assertEqual(ledger.equivalent_model("claude-mythos-6"), "claude-fable-5")
+        self.assertIsNone(ledger.equivalent_model("claude-fable-5-1"))   # priced by prefix
+        self.assertAlmostEqual(ledger.call_cost("claude-haiku-5-5", 1_000_000, 0, 0, 0, 0), 1.0)
+        self.assertIsNone(ledger.equivalent_model("claude-unknown-x"))
+
     def test_user_prices_and_equivalents_win(self):
         o = ledger.ledger_overrides({
             "ledger_prices": {"gpt-6": {"in": 3.0, "out": 9.0}},
@@ -182,6 +191,18 @@ class Repricing(LedgerTestCase):
         ledger.reprice(self.conn, ledger.ledger_overrides(
             {"ledger_prices": {"claude-sonnet-5": {"in": 1.0, "out": 1.0}}}))
         self.assertEqual(self.cost("anthropic:m1"), before)
+
+    def test_unpriced_claude_rows_get_their_family_price_on_upgrade(self):
+        _jl(self.root / "claude/p/s1.jsonl", [_cc_user("u1", "hi", "2026-09-27T10:00:00Z"),
+                                            _cc_asst("m1", "2026-09-27T10:00:01Z")])
+        self.ingest()
+        # a row stored before the fallback existed: new model, no price, no split
+        self.conn.execute("UPDATE calls SET model = 'claude-haiku-5-5', cost_usd = NULL, "
+                          "cache_write_1h_tokens = NULL")
+        self.conn.execute("DELETE FROM meta WHERE key = 'pricing_version'")
+        ledger.reprice(self.conn)
+        # haiku-4 stand-in, $1/$5: 10 in, 100 out, 200 written (5-minute assumption), 1000 read
+        self.assertAlmostEqual(self.cost("anthropic:m1"), (10 + 100 * 5 + 200 * 1.25 + 1000 * 0.1) / 1e6)
 
     def test_upgrade_rereads_logs_to_fill_in_the_cache_split(self):
         _jl(self.root / "claude/p/s1.jsonl", [_cc_user("u1", "hi", "2026-09-27T10:00:00Z"),

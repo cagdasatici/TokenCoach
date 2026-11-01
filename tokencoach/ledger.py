@@ -92,6 +92,12 @@ OPENAI_PRICES = {
 # Override per model in the config: "ledger_model_equivalents":
 # {"codex-auto-review": "gpt-5.6-luna"}, or exact prices with "ledger_prices".
 MODEL_EQUIVALENTS = [
+    # Claude: a new release of a family is priced like that family's newest
+    # published model, so it is never silently left out of the totals.
+    (r"^claude-haiku-", "claude-haiku-4"),
+    (r"^claude-sonnet-", "claude-sonnet-5"),
+    (r"^claude-opus-", "claude-opus-5-5"),
+    (r"^claude-(fable|mythos)-", "claude-fable-5"),
     (r"^codex-auto-review", "gpt-5.4-mini"),
     (r"-(mini|nano)\b", "gpt-5.4-mini"),
     (r"-luna\b", "gpt-5.6-luna"),
@@ -973,13 +979,14 @@ def ledger_overrides(config: dict) -> dict:
 
 def reprice(conn, overrides: dict | None = None) -> int:
     """Recompute costs when the pricing rules or the person's overrides
-    change, and price any unpriced ones. A Claude call is repriced only when
-    its 5-minute / 1-hour cache split is known; the rest keep their
-    ingest-time cost (only estimates are left out entirely)."""
+    change, and price any unpriced ones. A priced Claude call is repriced
+    only when its 5-minute / 1-hour cache split is known; the rest keep their
+    ingest-time cost. An unpriced Claude call without the split is priced
+    with the 5-minute assumption ingest uses. Estimates are left out."""
     version = hashlib.sha1(json.dumps([MODEL_EQUIVALENTS, LIST_PRICES, overrides or {}],
                                       sort_keys=True).encode()).hexdigest()[:12]
     where = ("estimated = 0 AND (model NOT LIKE 'claude-%' "
-             "OR cache_write_1h_tokens IS NOT NULL)")
+             "OR cache_write_1h_tokens IS NOT NULL OR cost_usd IS NULL)")
     if _meta_get(conn, "pricing_version") == version:
         where += " AND cost_usd IS NULL"
     rows = conn.execute(f"SELECT id, model, input_tokens, output_tokens, cache_write_tokens, "

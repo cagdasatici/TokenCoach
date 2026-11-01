@@ -1209,8 +1209,8 @@ def build_report(conn, config: dict | None = None, days: int = DASHBOARD_DAYS,
     unpriced = ""
     if data["equivalents"]:
         pairs = ", ".join(f"{m} ≈ {c}" for m, c in sorted(data["equivalents"].items()))
-        unpriced = ("OpenAI does not publish prices for the Codex models, so they are priced at the "
-                    f"nearest Claude tier (an assumption): {pairs}. Change a mapping with "
+        unpriced = ("Some models have no published price, so they are priced like their closest "
+                    f"published sibling (an estimate): {pairs}. Change a mapping with "
                     "\"ledger_model_equivalents\" or set exact prices with \"ledger_prices\" in "
                     "~/Library/Application Support/TokenCoach/config.json.")
     blob = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
