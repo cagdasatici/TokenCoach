@@ -571,6 +571,20 @@ class ReportAndOptimizer(LedgerTestCase):
         fact = dashboard_data(self.conn)["facts"][0]
         self.assertEqual((fact[2], fact[8], fact[13]), (2, 1.5, 1))   # 2 calls, 1 measured
 
+    def test_long_prompt_spend_is_dated_by_the_hour_it_was_spent(self):
+        from tokencoach.ledger_report import dashboard_data
+        from datetime import datetime, timezone, timedelta
+        start = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
+        iso = lambda h: (start + timedelta(hours=h, minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _jl(self.root / "claude/p/s7.jsonl", [_cc_user("u1", "long task", iso(0), session="s7"),
+                                             _cc_asst("a1", iso(0), session="s7"),
+                                             _cc_asst("a2", iso(2), session="s7")])
+        self.ingest()
+        facts = dashboard_data(self.conn)["facts"]
+        self.assertEqual(len(facts), 2)                    # one per hour, not one per prompt
+        self.assertEqual([f[12] for f in facts], [1, 0])   # the prompt is still counted once
+        self.assertGreater(facts[1][11] - facts[0][11], 3600)
+
     def test_open_file_prefers_configured_then_chrome(self):
         from tokencoach import ledger_report
         with patch.object(ledger_report.os.path, "exists", side_effect=lambda p: "Google Chrome" in p), \

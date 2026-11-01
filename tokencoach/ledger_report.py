@@ -988,7 +988,11 @@ async function refreshData() {
   } catch (e) { freshness(true); } finally { refreshing = false; }
 }
 if (D.live) {
-  setInterval(() => { refreshDue = true; refreshData(); }, 5 * 60 * 1000);
+  setInterval(() => { refreshDue = true; refreshData(); }, 60 * 1000);
+  addEventListener('focus', () => requestRefresh());
+  // A filter dropdown keeps focus after a choice, which would hold refreshes
+  // back indefinitely; let go of it once the choice is made (editors keep theirs).
+  document.addEventListener('change', e => { if (e.target.tagName === 'SELECT' && !e.target.closest('.editor')) e.target.blur(); });
   setInterval(() => { if (refreshDue) refreshData(); }, 5000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && refreshDue) refreshData(); });
 }
@@ -1049,6 +1053,12 @@ PAGE = """<!doctype html>
 <script>{js}</script></body></html>"""
 
 
+# Facts are split into hourly buckets so a long-running prompt's spend lands
+# in the hours it was spent, not all at the prompt's first response; without
+# this, "Today", the timeline and the month pace lag behind long agent runs.
+FACT_BUCKET = 3600
+
+
 def dashboard_data(conn, config: dict | None = None, days: int = DASHBOARD_DAYS) -> dict:
     config = config or {}
     since = ledger._day_start(days - 1)
@@ -1063,8 +1073,8 @@ def dashboard_data(conn, config: dict | None = None, days: int = DASHBOARD_DAYS)
                MIN(ts) t, MIN(source) source, MIN(session_id) session_id,
                MIN(project) project, MAX(estimated) est
         FROM calls WHERE ts >= ? AND project != ?
-        GROUP BY pid, model ORDER BY pid, t
-        """, (since, ledger.OPTIMIZER_PROJECT)).fetchall()
+        GROUP BY pid, model, CAST(ts / ? AS INTEGER) ORDER BY pid, t
+        """, (since, ledger.OPTIMIZER_PROJECT, FACT_BUCKET)).fetchall()
     pids = sorted({r["pid"] for r in rows if not r["pid"].startswith("orphan:")})
     texts = {}
     for i in range(0, len(pids), 500):
