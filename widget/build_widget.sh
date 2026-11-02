@@ -117,7 +117,10 @@ ditto "$BUILT_APP" "$INSTALL_PATH"
 # code and makes the installed app look broken.
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 "$LSREGISTER" -u "$BUILT_APP" 2>/dev/null || true
-"$LSREGISTER" -f "$INSTALL_PATH" 2>/dev/null || true
+# -R recurses into the extension: without it LaunchServices can keep the
+# appex at its old version, chronod then rejects every timeline reload with
+# "Bundle version did not match" and the widget freezes on stale numbers.
+"$LSREGISTER" -f -R -trusted "$INSTALL_PATH" 2>/dev/null || true
 
 retire_installed_extension "$INSTALL_PATH"
 

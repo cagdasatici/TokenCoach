@@ -269,7 +269,7 @@ dupes=$("$LSREGISTER" -dump 2>/dev/null | grep "path:" | grep -i "TokenCoachWidg
 if [ -n "$dupes" ]; then
     if repairing; then
         echo "$dupes" | while read -r d; do [ -n "$d" ] && "$LSREGISTER" -u "$d" 2>/dev/null; done
-        "$LSREGISTER" -f "$HOST_APP" 2>/dev/null
+        "$LSREGISTER" -f -R -trusted "$HOST_APP" 2>/dev/null
         say_fixed "unregistered duplicate bundle copies"
     else
         say_failed "duplicate bundle copies registered"
