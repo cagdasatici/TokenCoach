@@ -1590,7 +1590,7 @@ class _UsagePanel:
         # Spend today (usage ledger)
         summary = getattr(self._app, "_ledger_summary", None)
         if summary is not None:
-            elements.append(('provider_header', y, 18, 'Spend today', '#8E8E93',
+            elements.append(('provider_header', y, 18, 'Spend today · this Mac', '#8E8E93',
                              f"{_ledger.fmt_usd(summary['cost'])} API-equiv."))
             y += 18 + 6
             for line in _ledger_menu_lines(summary, getattr(self._app, "_ledger_status", ""))[1:]:
@@ -2164,7 +2164,7 @@ class TokenCoachApp(rumps.App):
             items.append(None)
 
         # -- Spend (usage ledger) ---------------------------------------------
-        items.append(_mi(f"  {APP_NAME} \u00b7 spend (API-equivalent)"))
+        items.append(_mi(f"  {APP_NAME} \u00b7 spend, this Mac (API-equivalent)"))
         for line in _ledger_menu_lines(self._ledger_summary, self._ledger_status):
             items.append(_mi(line))
         items.append(rumps.MenuItem("Open Dashboard \u2197", callback=self._open_dashboard))

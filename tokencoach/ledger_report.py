@@ -465,7 +465,7 @@ function tiles(rows, prev) {
   const calls = sum(rows, f => f.calls);
   const inTok = sum(rows, f => f.tin + f.tcw + f.tcr), tokens = inTok + sum(rows, f => f.tout);
   const T = [
-    ['Spent', usd(cost) + chip(cost, pcost, true), 'at API prices'],
+    ['Spent', usd(cost) + chip(cost, pcost, true), 'at API prices, this Mac only'],
     ['Prompts', prompts.toLocaleString() + chip(prompts, pprompts, null), prompts ? `${(calls / prompts).toFixed(0)} agent responses each on average` : ''],
     ['Per prompt', (prompts ? usd(cost / prompts) : '—') + (prompts && pprompts ? chip(cost / prompts, pcost / pprompts, true) : ''), ''],
   ];

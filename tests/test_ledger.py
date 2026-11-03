@@ -114,6 +114,8 @@ class Pricing(unittest.TestCase):
         self.assertEqual(ledger._price_for("claude-opus-5-5")["in"], 4.0)
         self.assertEqual(ledger._price_for("claude-opus-5")["in"], 5.0)
         self.assertEqual(ledger._price_for("claude-haiku-4-5-20251001")["in"], 1.0)
+        self.assertEqual(ledger._price_for("claude-haiku-5-5")["in"], 0.10)
+        self.assertAlmostEqual(ledger.call_cost("claude-fable-5-1", 0, 0, 0, 0, 1_000_000), 0.25)
 
     def test_openai_list_prices(self):
         # gpt-6-astra: $10 in, $1 cached, $50 out

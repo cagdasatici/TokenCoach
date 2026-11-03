@@ -52,12 +52,14 @@ OPTIMIZER_PROJECT = "tokencoach-optimizer"
 # Matched by longest prefix of the model id.
 CLAUDE_PRICES = {
     "claude-fable-5":    {"in": 10.0, "out": 50.0},
+    "claude-fable-5-1":  {"in": 10.0, "out": 50.0, "read": 0.25},
     "claude-mythos-5":   {"in": 10.0, "out": 50.0},
     "claude-opus-5-5":   {"in": 4.0,  "out": 20.0, "read": 0.20},
     "claude-opus-5":     {"in": 5.0,  "out": 25.0},
     "claude-opus-4":     {"in": 5.0,  "out": 25.0},
     "claude-sonnet-5":   {"in": 2.0,  "out": 10.0},
     "claude-sonnet-4":   {"in": 3.0,  "out": 15.0},
+    "claude-haiku-5":    {"in": 0.10, "out": 0.50},   # prompts over 100K tokens bill higher; not modelled
     "claude-haiku-4":    {"in": 1.0,  "out": 5.0},
 }
 
