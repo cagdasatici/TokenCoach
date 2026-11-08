@@ -430,15 +430,40 @@ def _read_new_lines(path: str, offset: int):
         offset = 0
     if size == offset:
         return [], offset
+    # Find the end of the last complete line by scanning backwards in small
+    # blocks, then stream lines lazily. Never holds the whole file in memory.
+    end = _last_newline_end(path, offset, size)
+    if end <= offset:
+        return [], offset
+    return _iter_lines(path, offset, end), end
+
+
+def _last_newline_end(path: str, offset: int, size: int, block: int = 1 << 16) -> int:
+    """Byte offset just past the last b"\\n" in [offset, size), or offset if none."""
+    with open(path, "rb") as f:
+        pos = size
+        while pos > offset:
+            start = max(offset, pos - block)
+            f.seek(start)
+            i = f.read(pos - start).rfind(b"\n")
+            if i >= 0:
+                return start + i + 1
+            pos = start
+    return offset
+
+
+def _iter_lines(path: str, offset: int, end: int):
+    """Yield decoded lines from [offset, end); `end` must sit on a line boundary."""
     with open(path, "rb") as f:
         f.seek(offset)
-        data = f.read()
-    end = data.rfind(b"\n")
-    if end < 0:
-        return [], offset
-    chunk = data[: end + 1]
-    lines = chunk.decode("utf-8", errors="replace").splitlines()
-    return lines, offset + len(chunk)
+        remaining = end - offset
+        for raw in f:
+            remaining -= len(raw)
+            if remaining < 0:
+                break
+            yield raw.decode("utf-8", errors="replace").rstrip("\r\n")
+            if remaining == 0:
+                break
 
 
 # ── parsers ──────────────────────────────────────────────────────────────────

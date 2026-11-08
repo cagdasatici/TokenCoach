@@ -103,6 +103,38 @@ class LedgerTestCase(unittest.TestCase):
         return [dict(r) for r in self.conn.execute("SELECT * FROM calls ORDER BY ts, id")]
 
 
+class ReadNewLines(unittest.TestCase):
+    def _file(self, data: bytes):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        p = pathlib.Path(tmp.name) / "t.jsonl"
+        p.write_bytes(data)
+        return str(p)
+
+    def test_streams_complete_lines_and_leaves_partial_tail(self):
+        path = self._file(b'{"a":1}\n{"b":2}\n{"par')
+        lines, end = ledger._read_new_lines(path, 0)
+        self.assertEqual(list(lines), ['{"a":1}', '{"b":2}'])
+        self.assertEqual(end, len(b'{"a":1}\n{"b":2}\n'))
+
+    def test_resumes_from_offset_and_handles_crlf_and_unicode(self):
+        path = self._file('{"a":"é"}\r\n{"b":2}\n'.encode())
+        first = len('{"a":"é"}\r\n'.encode())
+        lines, end = ledger._read_new_lines(path, first)
+        self.assertEqual(list(lines), ['{"b":2}'])
+        self.assertEqual(end, len(pathlib.Path(path).read_bytes()))
+
+    def test_no_complete_line_returns_same_offset(self):
+        path = self._file(b'{"par')
+        lines, end = ledger._read_new_lines(path, 0)
+        self.assertEqual((list(lines), end), ([], 0))
+
+    def test_newline_further_back_than_one_block(self):
+        path = self._file(b"x\n" + b"y" * (3 << 16))
+        lines, end = ledger._read_new_lines(path, 0)
+        self.assertEqual((list(lines), end), (["x"], 2))
+
+
 class Pricing(unittest.TestCase):
     def test_sonnet5_cost_with_1h_cache_write(self):
         # 10 in, 100 out, 200 1h-write, 1000 read at $2/$10
