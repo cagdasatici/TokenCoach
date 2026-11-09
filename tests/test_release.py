@@ -727,6 +727,20 @@ class CookiesStayOutOfTheLog(unittest.TestCase):
             providers._warn_keychain_once()            # must not raise
 
 
+class AccountRepliesStayOutOfTheLog(unittest.TestCase):
+    def test_usage_reply_and_org_id_are_not_logged(self):
+        from tokencoach import providers
+        reply = {"five_hour": {"utilization": 41.5, "resets_at": "MARKER-RESET"}}
+        with patch.object(providers, "_org_id_from_cookies", return_value="org-MARKER-ID"), \
+                patch.object(providers, "_get", return_value=reply), \
+                self.assertLogs(providers.log, level="DEBUG") as logs:
+            out = providers.fetch_raw("sessionKey=x")
+        text = "\n".join(logs.output)
+        self.assertEqual(out, {"usage": reply, "org_id": "org-MARKER-ID"})
+        self.assertNotIn("MARKER-RESET", text)
+        self.assertNotIn("org-MARKER-ID", text)
+
+
 class DoctorCronRepair(unittest.TestCase):
     # Found on the mini (path A): run by launchd, `crontab -` failed with
     # "Operation not permitted" and the doctor still reported it as repaired.

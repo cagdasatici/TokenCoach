@@ -174,11 +174,11 @@ def fetch_raw(cookie_str: str) -> dict:
     log.debug("using cookies keys: %s", list(cookies.keys()))
 
     org_id = _org_id_from_cookies(cookies)
-    log.debug("org_id from cookie: %s", org_id)
+    log.debug("org_id from cookie: %s", "found" if org_id else "missing")
 
     if not org_id:
         org_id = _org_id_from_api(cookies)
-        log.debug("org_id from api: %s", org_id)
+        log.debug("org_id from api: %s", "found" if org_id else "missing")
 
     if not org_id:
         raise ValueError(
@@ -189,7 +189,7 @@ def fetch_raw(cookie_str: str) -> dict:
     usage = _get(
         f"https://claude.ai/api/organizations/{org_id}/usage", cookies
     )
-    log.debug("usage full response: %s", json.dumps(usage, indent=2))
+    log.debug("usage reply received: %d fields", len(usage) if isinstance(usage, dict) else 0)
     return {"usage": usage, "org_id": org_id}
 
 
