@@ -11,6 +11,7 @@
 #   TOKENCOACH_REF        branch or tag             (default main)
 #   TOKENCOACH_NO_LAUNCH  1 = install files only: no login agent, watchdog,
 #                         widget, Claude Code hook or launch (used by tests)
+#   TOKENCOACH_CODE_ONLY  1 = stop once the code is in place (used by tests)
 
 set -e
 
@@ -96,20 +97,52 @@ if [ "$legacy_found" = true ] && [ "$NO_LAUNCH" != "1" ]; then
 fi
 
 # ── 3. Get the code ──────────────────────────────────────────────────────────
+# An existing install only ever moves forward to a commit signed by a key it
+# already trusts (the same rule as tokencoach/update.py). Nothing is reset or
+# deleted: local edits, other branches and unrelated folders are left alone.
 step 2 "Downloading TokenCoach…"
+MOVE_HINT="Fix: move the folder away with  mv \"$INSTALL_DIR\" \"$INSTALL_DIR.old\"  and run the install command again.
+     Your data is stored elsewhere and is kept."
 if [ -d "$INSTALL_DIR/.git" ]; then
-  say "↻  Updating $INSTALL_DIR…"
-  git -C "$INSTALL_DIR" fetch --quiet origin
-  git -C "$INSTALL_DIR" checkout --quiet "$REF" 2>/dev/null || true
-  git -C "$INSTALL_DIR" merge --ff-only --quiet "origin/$REF" 2>/dev/null || \
-    git -C "$INSTALL_DIR" reset --quiet --hard "origin/$REF"
+  say "↻  Updating ${INSTALL_DIR}…"
+  git -C "$INSTALL_DIR" fetch --quiet origin \
+    || die "Could not check for updates. Check that you are online, then run the install command again."
+  [ -z "$(git -C "$INSTALL_DIR" status --porcelain --untracked-files=no)" ] \
+    || die "$INSTALL_DIR has local changes, so the installer left it alone.
+     $MOVE_HINT"
+  [ "$(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD)" = "$REF" ] \
+    || die "$INSTALL_DIR is not on the $REF branch, so the installer left it alone.
+     $MOVE_HINT"
+  TARGET="$(git -C "$INSTALL_DIR" rev-parse --verify --quiet "origin/$REF^{commit}")" \
+    || die "The download server has no branch named $REF."
+  if [ "$(git -C "$INSTALL_DIR" rev-parse HEAD)" != "$TARGET" ]; then
+    git -C "$INSTALL_DIR" merge-base --is-ancestor HEAD "$TARGET" \
+      || die "$INSTALL_DIR has commits of its own, so the installer left it alone.
+     $MOVE_HINT"
+    SIGNERS="$INSTALL_DIR/allowed_signers"
+    [ -f "$SIGNERS" ] \
+      || die "$INSTALL_DIR is too old to check updates safely, so the installer left it alone.
+     $MOVE_HINT"
+    [ "$(git -C "$INSTALL_DIR" -c "gpg.ssh.allowedSignersFile=$SIGNERS" log -1 --format='%G?' "$TARGET" 2>/dev/null)" = "G" ] \
+      || die "The newest TokenCoach code is not signed by a key this install trusts, so nothing was changed.
+     Please report this at https://github.com/cagdasatici/TokenCoach/issues"
+    git -C "$INSTALL_DIR" merge --ff-only --quiet "$TARGET" \
+      || die "Could not update $INSTALL_DIR. Nothing was changed.
+     $MOVE_HINT"
+  fi
 else
+  if [ -e "$INSTALL_DIR" ] && [ -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ] && [ ! -f "$INSTALL_DIR/tokencoach.py" ]; then
+    die "$INSTALL_DIR already exists and is not a TokenCoach install, so the installer will not touch it.
+     Fix: choose another folder with TOKENCOACH_DIR, or move that folder away, then run the install command again."
+  fi
   say "↓  Downloading TokenCoach…"
   rm -rf "$INSTALL_DIR"
   git clone --quiet --depth 1 --branch "$REF" "$REPO" "$INSTALL_DIR" \
     || die "Could not download TokenCoach. Check that you are online, then run the install command again."
 fi
 ok "Code: $INSTALL_DIR ($(git -C "$INSTALL_DIR" rev-parse --short HEAD))"
+# Test hook: stop once the code is in place (no venv, no downloads).
+if [ "${TOKENCOACH_CODE_ONLY:-0}" = "1" ]; then trap - EXIT; exit 0; fi
 
 # ── 4. Virtual environment ───────────────────────────────────────────────────
 step 3 "Setting it up (about a minute)…"

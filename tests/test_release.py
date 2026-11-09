@@ -462,6 +462,61 @@ class AutoUpdate(unittest.TestCase):
         self.assertFalse(_check_and_apply_update(str(self.clone)))
 
 
+class InstallerRerun(unittest.TestCase):
+    """install.sh on an existing folder: fast-forward to a trusted commit, or change nothing."""
+    git, keygen, signed_commit = AutoUpdate.git, AutoUpdate.keygen, AutoUpdate.signed_commit
+    setUp, tearDown = AutoUpdate.setUp, AutoUpdate.tearDown
+
+    def run_installer(self, target=None):
+        env = {**os.environ, "HOME": self.tmp.name, "TOKENCOACH_DIR": str(target or self.clone),
+               "TOKENCOACH_REPO": str(self.origin), "TOKENCOACH_NO_LAUNCH": "1", "TOKENCOACH_CODE_ONLY": "1"}
+        return subprocess.run(["bash", str(REPO / "install.sh")], env=env, capture_output=True, text=True)
+
+    def test_trusted_update_fast_forwards(self):
+        self.signed_commit(self.trusted, "two")
+        r = self.run_installer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual((self.clone / "a.txt").read_text(), "2\n")
+
+    def test_unsigned_and_untrusted_updates_change_nothing(self):
+        before = self.git(self.clone, "rev-parse", "HEAD")
+        self.git(self.origin, "commit", "-qam", "unsigned")
+        self.assertNotEqual(self.run_installer().returncode, 0)
+        (self.origin / "a.txt").write_text("3\n")
+        self.signed_commit(self.stranger, "signed by someone else")
+        self.assertNotEqual(self.run_installer().returncode, 0)
+        self.assertEqual(self.git(self.clone, "rev-parse", "HEAD"), before)
+        self.assertEqual((self.clone / "a.txt").read_text(), "1\n")
+
+    def test_local_edits_are_kept(self):
+        self.signed_commit(self.trusted, "two")
+        (self.clone / "a.txt").write_text("my edit\n")
+        self.assertNotEqual(self.run_installer().returncode, 0)
+        self.assertEqual((self.clone / "a.txt").read_text(), "my edit\n")
+
+    def test_own_commits_are_kept(self):
+        self.signed_commit(self.trusted, "two")
+        (self.clone / "b.txt").write_text("mine\n")
+        self.git(self.clone, "add", "b.txt")
+        self.git(self.clone, "commit", "-qm", "local work")
+        mine = self.git(self.clone, "rev-parse", "HEAD")
+        self.assertNotEqual(self.run_installer().returncode, 0)
+        self.assertEqual(self.git(self.clone, "rev-parse", "HEAD"), mine)
+
+    def test_foreign_folder_is_never_deleted(self):
+        other = pathlib.Path(self.tmp.name) / "documents"
+        other.mkdir()
+        (other / "keep.txt").write_text("important\n")
+        self.assertNotEqual(self.run_installer(other).returncode, 0)
+        self.assertEqual((other / "keep.txt").read_text(), "important\n")
+
+    def test_fresh_folder_is_cloned(self):
+        fresh = pathlib.Path(self.tmp.name) / "fresh"
+        r = self.run_installer(fresh)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue((fresh / "a.txt").exists())
+
+
 class AutoUpdateRestart(unittest.TestCase):
     def test_supervised_restart_uses_fresh_launchd_process(self):
         from tokencoach import update
