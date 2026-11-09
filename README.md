@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/tokencoach-logo.png" alt="TokenCoach logo" width="200" height="200">
+  <img src="assets/tokencoach-logo.png" alt="TokenCoach logo" width="96" height="96">
 </p>
 
 <h1 align="center">TokenCoach</h1>
@@ -9,7 +9,8 @@
 </p>
 
 <p align="center">
-  A macOS menu bar app for Claude Code, Cowork and Codex: quota left, cost per prompt, and coaching on costly habits.
+  A free, open-source macOS menu bar app for Claude Code, Cowork and Codex:<br>
+  quota left, cost per prompt, and coaching on costly habits. Your data stays on your Mac.
 </p>
 
 <p align="center">
@@ -28,19 +29,25 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start"><img alt="Get started: install in one command" src="https://img.shields.io/badge/Get%20started-install%20in%20one%20command-1fbf8f?style=for-the-badge"></a>
-</p>
-
-<br>
-
-<p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
-    <img alt="TokenCoach dashboard with sample data: health state, quota left, habits, coach lessons with before/after and spending" src="docs/images/dashboard-light.png" width="880">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.png">
+    <img alt="TokenCoach dashboard with sample data: a healthy verdict, quota left right now and this week, and cost per prompt against your usual" src="docs/images/hero-light.png" width="880">
   </picture>
   <br>
-  <sub><b>Sample data</b> from the built-in demo (<code>tokencoach --demo</code>); all screenshots below use it too.</sub>
+  <sub><b>Sample data</b> from the built-in demo (<code>tokencoach --demo</code>); every screenshot on this page uses it.</sub>
 </p>
+
+A $20–200 subscription feels flat until you hit the 5-hour limit mid-afternoon. The cause is
+rarely one big question; it's habits you can't see: long sessions where every reply re-reads
+300k tokens of context, broad asks that send an agent on a 100-step tour, or a quick question
+sent to the priciest model. TokenCoach makes those visible and helps you change them.
+
+| | |
+|---|---|
+| **Measure** | Every Claude Code, Cowork and Codex prompt with its tokens, model, project and cost at API prices, plus the Claude and ChatGPT quota you have left. |
+| **Nudge** | A one-line heads-up in Claude Code before an expensive prompt runs. It never blocks or rewrites what you typed. |
+| **Coach** | Repeated patterns become lessons you can edit and apply to `CLAUDE.md` / `AGENTS.md`, and remove again. |
+| **Compare** | Before and after for every applied lesson, with dates and sample sizes. |
 
 <p align="center">
   <sub>Dollar amounts are API-equivalent costs, not your subscription bill. Claude quota per prompt is an estimate; unmeasured prompts show as unknown.</sub>
@@ -50,16 +57,33 @@
 
 ## Quick start
 
-You need a Mac with macOS 12 or newer.
+You need a Mac with macOS 12 or newer. Pick one route:
 
-1. **Install.** Open Terminal (Cmd+Space, type "Terminal", Return), paste this and press Return:
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/cagdasatici/TokenCoach/main/install.sh | bash
-   ```
-   It checks your Mac, says in plain words if anything is missing (such as Python 3.10+), and takes about a minute.
-2. **Look for ◆ in the menu bar**, top right of your screen. Click it any time.
-3. **Follow the setup guide** that opens by itself: **Get started**, then **Sign in to Claude…** and log in to
-   claude.ai in the small window. Your remaining quota appears in the menu bar.
+**One-line installer** — the latest signed `main`, with start-at-login, auto-update and the optional
+desktop widget. Needs Python 3.10 or newer and git; the installer checks and tells you in plain words
+what is missing. Open Terminal (Cmd+Space, type "Terminal", Return), paste this and press Return:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cagdasatici/TokenCoach/main/install.sh | bash
+```
+
+**Homebrew** — the stable release, **v1.2.0**. Brings its own Python, so nothing else is needed:
+
+```bash
+brew tap cagdasatici/tokencoach https://github.com/cagdasatici/TokenCoach
+brew trust --formula cagdasatici/tokencoach/tokencoach   # Homebrew 7 asks before loading formulae from other taps
+brew install tokencoach
+tokencoach &
+```
+
+**Just looking?** The [sample-data demo](docs/install.md#just-look-first-the-sample-data-demo) opens the
+dashboard with made-up data and reads nothing of yours.
+
+Then:
+
+1. **Look for ◆ in the menu bar**, top right of your screen. Click it any time.
+2. **Follow the setup guide** that opens by itself: **Get started**, then **Sign in to Claude…** and
+   log in to claude.ai in the small window. Your remaining quota appears in the menu bar.
 
 <p align="center">
   <img width="260" alt="Setup guide, first dialog: Welcome to TokenCoach, with Later and Get started" src="docs/images/setup-1-welcome.png">
@@ -68,19 +92,12 @@ You need a Mac with macOS 12 or newer.
 </p>
 
 Signing in is optional: without it, TokenCoach still tracks your local Claude Code, Cowork and
-Codex usage. Reopen the guide any time from the ⚙ menu → **Setup Guide…**.
-More detail: [first-run guide](docs/first-run.md) · Other ways to install (Homebrew, demo only):
-[install guide](docs/install.md).
-
-> The one-line installer follows the signed `main` branch. Homebrew ships the stable release,
-> **v1.2.0**, which includes the sign-in window, the setup guide and yield tracking.
+Codex usage. The quota bars are unofficial: they read the same private usage pages your browser
+does, with your own sign-in, and can break when Anthropic or OpenAI change them. Reopen the guide
+any time from the ⚙ menu → **Setup Guide…**. More detail: [first-run guide](docs/first-run.md) ·
+[install, update and uninstall](docs/install.md).
 
 ## Features
-
-A $20–200 subscription feels flat until you hit the 5-hour limit mid-afternoon. The cause is
-rarely one big question; it's habits you can't see: long sessions where every reply re-reads
-300k tokens of context, broad asks that send an agent on a 100-step tour, or a quick question
-sent to the priciest model. TokenCoach makes those visible and helps you change them.
 
 ### 1. Measure: every prompt, every token, every project
 
@@ -98,6 +115,15 @@ left now, your weekly pace and your habits. Below that: everything by day, proje
 tool, with an **Advanced** view for the deep dive.
 
 <br clear="right">
+
+<details>
+<summary><b>The whole dashboard</b>: health, quota, coach, spending</summary>
+<br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
+  <img alt="Full TokenCoach dashboard with sample data" src="docs/images/dashboard-light.png" width="880">
+</picture>
+</details>
 
 ### 2. Nudge: a heads-up before an expensive prompt runs
 
@@ -145,6 +171,17 @@ then judges them a week later: **cost per accepted change**, **prompts per accep
 ---
 
 ## FAQ
+
+<details>
+<summary><b>Is this official? Can it get my account in trouble?</b></summary>
+
+TokenCoach is an independent open-source project, not affiliated with or endorsed by Anthropic or
+OpenAI. Per-prompt tracking only reads transcript files that Claude Code, Cowork and Codex already
+write on your Mac. The quota bars are different: they ask claude.ai and chatgpt.com for the same
+usage figures their own settings pages show, using your sign-in, through endpoints that are not a
+public API. They can stop working without notice, and you decide whether to use them: skip
+**Sign in to Claude…** and everything except the quota bars still works.
+</details>
 
 <details>
 <summary><b>Is my Claude login safe?</b></summary>

@@ -15,6 +15,8 @@ CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 # name -> (query string, width, height)
 SHOTS = {
+    "hero-light":      ("theme=light&view=simple&range=30d", 1280, 530),
+    "hero-dark":       ("theme=dark&view=simple&range=30d", 1280, 530),
     "dashboard-light": ("theme=light&view=simple&range=30d", 1280, 1700),
     "dashboard-dark":  ("theme=dark&view=simple&range=30d", 1280, 1700),
     "coach-dark":      ("theme=dark&view=simple&range=30d&hide=health,card-timeline,card-top,templates-card", 1280, 900),
