@@ -18,7 +18,7 @@ from tokencoach.ledger import fmt_usd, fmt_tokens
 from tokencoach.ledger_report import REPORT_DIR, SOURCE_LABELS, CSS
 
 OPTIMIZER_DIR = os.path.join(os.path.dirname(ledger.LEDGER_DB), ledger.OPTIMIZER_PROJECT)
-OPTIMIZER_MODEL = "claude-sonnet-5"
+OPTIMIZER_MODEL = "sonnet"      # Claude Code's alias, so it follows the current Sonnet
 DIGEST_PROMPTS = 20
 PROMPT_CHARS = 1500        # per prompt in the digest; the ledger keeps full text
 TIMEOUT_SECS = 600

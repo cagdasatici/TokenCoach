@@ -75,6 +75,12 @@ def session_context(transcript_path: str | None) -> tuple[int, str | None]:
     return 0, None
 
 
+# Claude Code's short model names -> the model each currently selects. Keep in
+# step with ledger.CLAUDE_PRICES (tests/test_coach.py checks every one is priced).
+MODEL_ALIASES = {"opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5",
+                 "fable": "claude-fable-5-1"}
+
+
 def default_model() -> str | None:
     """Model for a session's first prompt: Claude Code's configured default."""
     env = os.environ.get("ANTHROPIC_MODEL")
@@ -85,9 +91,7 @@ def default_model() -> str | None:
             m = json.load(f).get("model")
     except (OSError, ValueError):
         return None
-    aliases = {"opus": "claude-opus-5", "sonnet": "claude-sonnet-5", "haiku": "claude-haiku-4-5",
-               "fable": "claude-fable-5"}
-    return aliases.get(m, m) if isinstance(m, str) else None
+    return MODEL_ALIASES.get(m, m) if isinstance(m, str) else None
 
 
 def per_reply_cost(ctx: int, model: str | None) -> float | None:

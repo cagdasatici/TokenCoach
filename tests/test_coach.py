@@ -480,6 +480,18 @@ class ListenerGuards(unittest.TestCase):
         c.close()
 
 
+class ModelAliases(unittest.TestCase):
+    def test_every_alias_is_priced(self):
+        from tokencoach import ledger, nudge
+        for alias, model in nudge.MODEL_ALIASES.items():
+            self.assertIsNotNone(ledger._price_for(model), f"{alias} -> {model} has no price")
+
+    def test_current_opus_still_suggests_sonnet(self):
+        from tokencoach import nudge
+        self.assertEqual(nudge.cheaper_ratio(nudge.MODEL_ALIASES["opus"])[0], "sonnet")
+        self.assertIsNone(nudge.cheaper_ratio(nudge.MODEL_ALIASES["sonnet"]))
+
+
 if __name__ == "__main__":
     unittest.main()
 
