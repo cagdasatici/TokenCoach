@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest something TokenCoach should do, or do differently.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never post credentials, cookies, dashboard URLs (they contain a secret), prompt text, raw logs or personal screenshots.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation and what gets in the way today. Use made-up examples.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: What you would expect TokenCoach to show or do.
+    validations:
+      required: true
+  - type: dropdown
+    id: tools
+    attributes:
+      label: Which tools do you use it with?
+      multiple: true
+      options:
+        - Claude Code
+        - Cowork
+        - Codex
+        - claude.ai / ChatGPT chats

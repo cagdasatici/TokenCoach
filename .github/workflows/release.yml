@@ -22,7 +22,7 @@ jobs:
       TOKENCOACH_SIGN_IDENTITY: ${{ vars.DEVELOPER_ID_APPLICATION }}
       TOKENCOACH_NOTARY_PROFILE: ${{ vars.NOTARY_KEYCHAIN_PROFILE }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Configure candidate signature verification
         run: git config gpg.ssh.allowedSignersFile "$PWD/allowed_signers"
       - name: Check prepared build environment
@@ -32,7 +32,7 @@ jobs:
           "$TOKENCOACH_BUILD_PYTHON" -m unittest discover -s tests
       - name: Build and notarize candidate (no publication)
         run: scripts/build-dmg.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: TokenCoach-${{ matrix.arch }}-candidate
           path: |

@@ -19,6 +19,20 @@ Support and review are best effort, with no guaranteed response time. Open an is
 before a large change so scope can be agreed; small fixes can go directly to a pull
 request with the problem, behavior change and validation explained.
 
+## Development quick start
+
+```sh
+git clone https://github.com/cagdasatici/TokenCoach && cd TokenCoach
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Python 3.10+
+.venv/bin/python -m unittest discover -s tests                        # the whole suite
+.venv/bin/python tokencoach.py --demo                                 # dashboard with sample data
+```
+
+The demo uses made-up data in a temporary folder, so it is safe to run next to a real install.
+Good first contributions: a clearer message or label, a missing model price in
+`tokencoach/ledger.py` (cite the provider's pricing page and the date), or a test for a case that
+surprised you. Releases are listed in [CHANGELOG.md](CHANGELOG.md).
+
 Read [AGENTS.md](AGENTS.md) and [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md).
 Use Python 3.10 or newer and a virtual environment, install `requirements.txt`, then run
 `python -m unittest discover -s tests`. Keep changes focused and preserve attribution,

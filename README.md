@@ -291,7 +291,7 @@ Full details: [security and privacy](SECURITY.md).
 
 Report bugs and questions in [GitHub Issues](https://github.com/cagdasatici/TokenCoach/issues)
 with your version (About TokenCoach or `tokencoach --version`), macOS version, install method and
-steps to reproduce; see [CONTRIBUTING.md](CONTRIBUTING.md). Never post cookies, dashboard URLs,
+steps to reproduce; see [CONTRIBUTING.md](CONTRIBUTING.md). Past releases: [CHANGELOG.md](CHANGELOG.md). Never post cookies, dashboard URLs,
 prompts, raw logs or personal screenshots. Report vulnerabilities privately via [SECURITY.md](SECURITY.md).
 Support is best effort.
 

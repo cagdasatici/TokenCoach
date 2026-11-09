@@ -156,6 +156,8 @@ class Packaging(unittest.TestCase):
                    "tokencoach/ui.py", "docs/plans/2026-09-29-remaining-release-work.md",
                    # Its "Upgrading from AIQuotaBar or AIQuotaLeft" note, like README's.
                    "docs/user-guide.md",
+                   # Published release notes, kept verbatim, describe that same upgrade.
+                   "CHANGELOG.md",
                    # Historical paths and launch-agent names are acceptance evidence.
                    "docs/release-acceptance-1.2.0.md"}
         files = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
