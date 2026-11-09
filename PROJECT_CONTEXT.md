@@ -2,7 +2,7 @@
 
 A navigation snapshot, not a replacement for requirements or live evidence. Update it after a meaningful milestone.
 
-## Snapshot — 2026-10-05: v1.1.0 published; v1.2.0 acceptance and sharing readiness open
+## Snapshot — 2026-11-09: v1.2.0 published 2026-10-24 (Homebrew and release archive); main is 1.2.1.dev0
 
 - **Product:** macOS menu bar app. Quota left for Claude and ChatGPT (from AIQuotaBar), plus a per-prompt ledger of Claude Code, Cowork and Codex usage, a local dashboard (simple view + Advanced), Claude Code nudges, lessons written into CLAUDE.md / AGENTS.md with before/after, Improve, templates, chat-export import and a sample-data demo.
 - **Health (v1.1.0):** `tokencoach/health.py` turns quota windows and habits into good / watch / critical. The menu bar shows percentages in bright white when healthy and soft yellow under quota pressure, without trailing markers; the dashboard shows the worst of quota and habits (habits cap at watch). The app writes the windows (with pace) into `usage.json`, which the dashboard reads; `--demo` uses `demo.sample_windows`, and `?health=watch|critical` previews the other states. The dashboard was restyled in the same change (Apple-like grouped layout). Checked with live data on 2026-09-28: the headline matched `health.py` for the real windows.
@@ -30,6 +30,8 @@ A navigation snapshot, not a replacement for requirements or live evidence. Upda
 | Widget | `widget/` (`build_widget.sh`); Python tests don't replace an Xcode build |
 
 ## Open
+
+- 2026-11-09 status: v1.2.0 was tagged and published on 2026-10-24 by owner decision with acceptance paths C, D, G and H partly open. The bullets below dated 2026-10-05 and 2026-10-06 are the record of that candidate phase; where they say v1.2.0 is unpublished or that Homebrew ships v1.1.0, this bullet supersedes them. Current work: [public launch review](docs/plans/2026-11-09-public-launch-review.md) and the backlog at the top of [remaining release work](docs/plans/2026-09-29-remaining-release-work.md).
 
 - 2026-10-06 launch decision: owner waived PS5 outside-tester validation and requested full launch. No tester evidence or outreach is claimed. Current signed base is `9eccdeb2eeb3565d373886e372a12aa0779b5b1e`; both it and `01c0874` have verified green CI. Local rerun on `9eccdeb`: 312 tests pass with loopback permission, and fresh isolated sample-dashboard JavaScript checks pass. Its extracted archive reports the correct revision and development version. Remaining live PS2/PS9 checks still require observations or explicit waiver before publication; a final signed 1.2.0 revision is still needed.
 

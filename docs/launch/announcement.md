@@ -1,8 +1,7 @@
 # TokenCoach announcement draft
 
-Prepared 2026-10-05, updated 2026-10-22 for the sign-in window and setup guide. Unpublished; broad sharing awaits release acceptance through Homebrew and the script route. Recheck the installation page and tested platform support
-before posting. The copy below describes the current development channel and
-explicitly distinguishes it from the stable release.
+Prepared 2026-10-05, updated 2026-11-09 for the published v1.2.0. Unpublished draft. Recheck the
+installation page before posting.
 
 ---
 
@@ -28,11 +27,9 @@ quota per prompt is estimated, and unavailable measurements stay unknown.
 Claude Code has prompt nudges; Codex coaching works through `AGENTS.md` lessons.
 The providers' private quota endpoints may change.
 
-Current source installation requires macOS 12+ and Python 3.10+; local prompt
-tracking needs Claude Code, Cowork or Codex transcripts. The optional widget needs
-macOS 14+ and Xcode. Homebrew currently ships v1.1.0, which predates the sign-in window and setup
-guide; the walkthrough shows newer features on moving signed `main`. The DMG is deferred and is not
-available.
+Requires macOS 12+. Install with Homebrew (stable v1.2.0, brings its own Python) or the one-line
+script (latest signed `main`, needs Python 3.10+ and git, adds the optional widget on Macs with
+Xcode and macOS 14+). Local prompt tracking needs Claude Code, Cowork or Codex on the same Mac.
 
 [Try TokenCoach — quick start and sample-data demo](https://github.com/cagdasatici/TokenCoach#quick-start).
 
