@@ -183,6 +183,12 @@ class Packaging(unittest.TestCase):
             r = subprocess.run(["bash", "-n", str(REPO / script)], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, f"{script}: {r.stderr}")
 
+    def test_restart_app_uses_our_own_icon(self):
+        script = (REPO / "make_dock_launcher.sh").read_text()
+        self.assertIn("assets/tokencoach-logo.png", script)
+        self.assertNotIn("claude_icon", script)
+        self.assertTrue((REPO / "assets" / "tokencoach-logo.png").exists())
+
     def test_requirements_are_exact(self):
         # auto-update installs these; a range would pull in whatever was published last
         text = (REPO / "requirements.txt").read_text().replace("\\\n", " ")

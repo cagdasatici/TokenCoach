@@ -16,7 +16,7 @@ osacompile -o "$APP" -e "do shell script \"'$SCRIPT'\"" \
     -e 'display notification "Restarted - look for the ◆ in your menu bar" with title "TokenCoach"'
 
 # Icon (skipped silently if the tools are unavailable)
-ICON_SRC="$SRC_DIR/assets/claude_icon.png"
+ICON_SRC="$SRC_DIR/assets/tokencoach-logo.png"
 if [ -f "$ICON_SRC" ] && command -v sips >/dev/null && command -v iconutil >/dev/null; then
     TMP=$(mktemp -d); ICONSET="$TMP/icon.iconset"; mkdir -p "$ICONSET"
     for sz in 16 32 128 256 512; do

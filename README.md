@@ -238,8 +238,13 @@ checked 2026-09-27. Full table and price overrides: [reference](docs/reference.m
   deeper** and **Improve** send prompt content to Claude through your own `claude` CLI, only when
   you click, on your Claude plan (TokenCoach removes `ANTHROPIC_API_KEY` from those runs unless you
   set `TOKENCOACH_USE_API_KEY=1`). Installs and updates download code from GitHub and Python packages.
-- **What changes on your Mac:** a login agent and watchdog, the Claude Code hook (after a backup of
-  `~/.claude/settings.json`), lesson blocks you apply, and git hooks in repositories you track.
+- **What changes on your Mac:** the script installer adds a login agent, a watchdog that checks every
+  two minutes that the app is running (a second launch agent plus one line in your crontab), a small
+  **Restart TokenCoach** app in `/Applications` and, when Xcode is present, the widget app
+  `/Applications/TokenCoachWidget.app`. Homebrew installs add only the login agent. With your
+  agreement the app also adds the Claude Code hook (after a backup of `~/.claude/settings.json`),
+  lesson blocks you apply, and git hooks in repositories you track. `uninstall.sh` (or
+  `tokencoach --cleanup` for Homebrew) removes all of these except applied lessons.
   Script installs update only to commits signed by a key in [`allowed_signers`](allowed_signers),
   with hash-pinned dependencies.
 
