@@ -256,6 +256,9 @@ checked 2026-09-27. Full table and price overrides: [reference](docs/reference.m
 
 - **No ◆ in the menu bar:** `tail -50 ~/Library/Logs/TokenCoach/tokencoach.log`, then
   `bash ~/.tokencoach/tokencoach-doctor.sh` checks and repairs the moving parts.
+- **Keep TokenCoach stopped:** choose **Quit**, then confirm **Quit and stay off**. This survives
+  logging out and back in. Open TokenCoach from its Dock launcher, run
+  `bash ~/.tokencoach/restart.sh` for the script install, or run `tokencoach` for Homebrew to resume.
 - **Quota bars empty:** ⚙ menu → **Sign in to Claude…** (or **Setup Guide…**). For ChatGPT, log in
   at chatgpt.com and use **Auto-detect from Browser**, or sign in to the Codex CLI.
 - **Dashboard buttons do nothing:** open it from the menu bar; a saved copy is read-only.

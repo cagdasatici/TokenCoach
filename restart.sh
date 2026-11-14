@@ -29,7 +29,11 @@ if [ -n "$pids" ]; then
     [ -n "$leftover" ] && kill -9 $leftover 2>/dev/null || true
 fi
 
-# 2. Start one, under launchd so it stays supervised.
+# 2. An explicit launch resumes a stopped app.
+launchctl enable "gui/$UID_NUM/$LABEL" || exit 1
+rm -f "$HOME/Library/Application Support/TokenCoach/stopped-by-user" || exit 1
+
+# Start one, under launchd so it stays supervised.
 if ! launchctl print "gui/$UID_NUM/$LABEL" >/dev/null 2>&1; then
     [ -f "$PLIST" ] && launchctl bootstrap "gui/$UID_NUM" "$PLIST" 2>/dev/null || true
 fi

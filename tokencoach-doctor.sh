@@ -20,8 +20,9 @@ HOST_LABEL="io.github.cagdasatici.tokencoach.widgethost"
 HOST_APP="/Applications/TokenCoachWidget.app"
 HOST_BIN="$HOST_APP/Contents/MacOS/TokenCoachWidget"
 CACHE="$HOME/Library/Application Support/TokenCoach/widget/usage.json"
-# Written by Quit, removed when the app starts: never bring a quit app back.
-QUIT_MARKER="$HOME/Library/Application Support/TokenCoach/quit-by-user"
+# Only the confirmed Quit writes this marker. Legacy quit-by-user markers
+# were temporary and do not suppress recovery.
+QUIT_MARKER="$HOME/Library/Application Support/TokenCoach/stopped-by-user"
 user_quit()  { [ -f "$QUIT_MARKER" ]; }
 UID_NUM=$(id -u)
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
@@ -190,10 +191,13 @@ for label in "$BAR_LABEL" "$HOST_LABEL"; do
     if launchctl print "gui/$UID_NUM/$label" >/dev/null 2>&1; then
         say_ok "$label loaded"
     elif [ "$label" = "$BAR_LABEL" ] && user_quit; then
-        say_ok "$label not loaded (you quit it; starts again at login)"
+        say_ok "$label stopped by user (open TokenCoach to resume)"
     elif repairing; then
-        launchctl bootstrap "gui/$UID_NUM" "$AGENTS/$label.plist" 2>/dev/null
-        say_fixed "$label bootstrapped"
+        if launchctl bootstrap "gui/$UID_NUM" "$AGENTS/$label.plist" 2>/dev/null; then
+            say_fixed "$label bootstrapped"
+        else
+            say_failed "$label could not be loaded"
+        fi
     else
         say_failed "$label not loaded"
     fi
@@ -232,8 +236,11 @@ elif user_quit; then
     say_ok "menu bar app stopped (you quit it)"
 else
     if repairing; then
-        launchctl kickstart -k "gui/$UID_NUM/$BAR_LABEL" 2>/dev/null
-        say_fixed "menu bar app was not running - started"
+        if launchctl kickstart "gui/$UID_NUM/$BAR_LABEL" 2>/dev/null; then
+            say_fixed "menu bar app was not running - started"
+        else
+            say_failed "menu bar app could not be started"
+        fi
     else
         say_failed "menu bar app not running"
     fi
@@ -288,15 +295,18 @@ if [ -d "$HOST_APP" ]; then
 fi
 
 # ── 8. data actually fresh ───────────────────────────────────────────────────
-if [ -f "$CACHE" ]; then
+if user_quit; then
+    say_ok "usage updates paused by user"
+elif [ -f "$CACHE" ]; then
     age=$(( $(date +%s) - $(stat -f %m "$CACHE") ))
     if [ "$age" -lt 600 ]; then
         say_ok "usage data fresh (${age}s old)"
-    elif user_quit; then
-        say_ok "usage data ${age}s old (app quit by you)"
-    elif repairing; then
-        launchctl kickstart -k "gui/$UID_NUM/$BAR_LABEL" 2>/dev/null
-        say_fixed "usage data was ${age}s stale - restarted menu bar app"
+    elif repairing && [ "$count" -gt 0 ]; then
+        if ! user_quit && launchctl kickstart -k "gui/$UID_NUM/$BAR_LABEL" 2>/dev/null; then
+            say_fixed "usage data was ${age}s stale - restarted menu bar app"
+        else
+            say_failed "usage data is stale and the app could not be restarted"
+        fi
     else
         say_failed "usage data ${age}s stale"
     fi

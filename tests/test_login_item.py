@@ -122,21 +122,30 @@ BAR = "io.github.cagdasatici.tokencoach"
 
 
 class QuitSticks(unittest.TestCase):
-    """Quit must last until the next login or a manual start: the doctor's
-    watchdog used to bring the app back within two minutes."""
+    """Only a confirmed Quit suppresses automatic recovery."""
 
     def test_quit_leaves_the_marker(self):
         from tokencoach import ui
         with tempfile.TemporaryDirectory() as d:
-            marker = os.path.join(d, "quit-by-user")
+            marker = os.path.join(d, "stopped-by-user")
             with patch.object(ui, "QUIT_MARKER", marker), \
-                    patch.object(ui.subprocess, "run") as run, \
+                    patch.object(ui.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run, \
+                    patch.object(ui.rumps, "alert", return_value=1), \
                     patch.object(ui.rumps, "quit_application"):
                 ui._quit_app()
             self.assertTrue(os.path.exists(marker))
-            self.assertIn("bootout", run.call_args.args[0])
+            self.assertEqual([call.args[0][1] for call in run.call_args_list], ["disable", "bootout"])
 
-    def run_doctor(self, quit_by_user):
+    def test_cancel_leaves_app_running(self):
+        from tokencoach import ui
+        with patch.object(ui.rumps, "alert", return_value=0), \
+                patch.object(ui.subprocess, "run") as run, \
+                patch.object(ui.rumps, "quit_application") as quit_app:
+            ui._quit_app()
+        run.assert_not_called()
+        quit_app.assert_not_called()
+
+    def run_doctor(self, marker=None):
         """Doctor sections 1-2, 4 and 8 in a scratch HOME; launchctl is a stub
         that logs its arguments and reports nothing loaded or running."""
         script = (REPO / "tokencoach-doctor.sh").read_text()
@@ -153,8 +162,8 @@ class QuitSticks(unittest.TestCase):
             cache = data / "widget/usage.json"
             cache.write_text("{}")
             os.utime(cache, (0, 0))                                   # stale
-            if quit_by_user:
-                (data / "quit-by-user").write_text("1\n")
+            if marker:
+                (data / marker).write_text("1\n")
             log = pathlib.Path(d, "launchctl.log")
             for name, text in {
                 "launchctl": f'#!/bin/bash\necho "$*" >> "{log}"\n'
@@ -170,9 +179,12 @@ class QuitSticks(unittest.TestCase):
                 and (c.endswith(f"/{BAR}") or c.endswith(f"/{BAR}.plist"))]
 
     def test_watchdog_starts_a_stopped_app(self):
-        starts = self.run_doctor(quit_by_user=False)
+        starts = self.run_doctor()
         self.assertTrue(any(c.startswith("bootstrap") for c in starts))
         self.assertTrue(any(c.startswith("kickstart") for c in starts))
 
     def test_watchdog_leaves_a_quit_app_alone(self):
-        self.assertEqual(self.run_doctor(quit_by_user=True), [])
+        self.assertEqual(self.run_doctor("stopped-by-user"), [])
+
+    def test_legacy_quit_marker_does_not_block_recovery(self):
+        self.assertTrue(self.run_doctor("quit-by-user"))

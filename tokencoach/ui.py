@@ -869,26 +869,36 @@ def _add_login_item(handoff: bool = False) -> bool:
 
 
 def _quit_app(_sender=None):
-    """Quit for real.
-
-    The launch agent is KeepAlive, so simply exiting would be undone within
-    seconds. Unload the job first; launchd then has nothing to respawn. The
-    plist stays on disk, so it starts again at the next login or from the Dock
-    launcher. The marker tells the doctor's watchdog to leave it stopped.
-    """
+    """Persist a confirmed stop across watchdog runs and macOS logins."""
+    if DEMO:
+        rumps.quit_application()
+        return
+    if rumps.alert(
+        title="Quit TokenCoach?",
+        message="TokenCoach will stay off until you open it again.",
+        ok="Quit and stay off",
+        cancel="Keep running",
+    ) != 1:
+        return
+    target = f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"
     try:
-        with open(QUIT_MARKER, "w") as f:
-            f.write(f"{time.time():.0f}\n")
-    except OSError:
-        log.debug("could not write quit marker", exc_info=True)
+        with open(QUIT_MARKER, "w"):
+            pass
+        result = subprocess.run(["launchctl", "disable", target], capture_output=True)
+        if result.returncode:
+            raise RuntimeError("launchctl disable failed")
+    except (OSError, RuntimeError):
+        log.exception("Could not persist TokenCoach stop")
+        try:
+            os.unlink(QUIT_MARKER)
+        except OSError:
+            log.debug("Could not remove stop marker", exc_info=True)
+        rumps.alert(title="TokenCoach is still running", message="macOS could not save the stop request.")
+        return
     try:
-        subprocess.run(
-            ["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"],
-            capture_output=True,
-        )
-    except Exception:
-        log.debug("bootout on quit failed", exc_info=True)
-    rumps.quit_application()
+        subprocess.run(["launchctl", "bootout", target], capture_output=True)
+    finally:
+        rumps.quit_application()
 
 
 def _remove_login_item():
@@ -1996,18 +2006,23 @@ class TokenCoachApp(rumps.App):
         self._ledger_updated = None
         self._optimizer_running = False
         self._last_lesson_scan = 0.0
-        try:
-            os.remove(QUIT_MARKER)        # started again, so the watchdog may supervise it
-        except FileNotFoundError:
-            pass
-        except OSError:
-            log.debug("could not remove quit marker", exc_info=True)
+        resuming = not DEMO and os.path.exists(QUIT_MARKER)
+        if resuming and _job_pid() == os.getpid():
+            os._exit(0)  # A supervised start must never undo a deliberate stop.
+        if resuming:
+            target = f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"
+            result = subprocess.run(["launchctl", "enable", target], capture_output=True)
+            if result.returncode == 0:
+                os.remove(QUIT_MARKER)
+            else:
+                log.warning("Could not re-enable the TokenCoach login agent")
+                resuming = False
         # Before the dashboard starts: a copy that hands over to launchd must not
         # hold the dashboard port while the supervised copy binds it.
         from tokencoach.legacy import finish_legacy_install
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if not bundled() and not finish_legacy_install(root):
-            if not _login_item_current():
+            if resuming or not _login_item_current():
                 os.close(self._instance_fd)
                 self._instance_fd = None
                 if _add_login_item(handoff=True):
@@ -2382,15 +2397,6 @@ class TokenCoachApp(rumps.App):
 
             # Keep original menu reference so rumps internals don't break
             self._original_menu = self._nsapp.nsstatusitem.menu()
-
-            # Build a minimal right-click menu (fallback with Quit)
-            from AppKit import NSMenu, NSMenuItem
-            fallback = NSMenu.alloc().init()
-            fallback.setAutoenablesItems_(False)
-            quit_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-                "Quit", b"terminate:", "q"
-            )
-            fallback.addItem_(quit_item)
 
             # Remove menu from status item so clicks route to button action
             self._nsapp.nsstatusitem.setMenu_(None)
@@ -3350,7 +3356,11 @@ class TokenCoachApp(rumps.App):
             log.exception("removal cleanup failed")
             rumps.alert(title="Cleanup incomplete", message="Some cleanup failed. Keep the app installed and see the TokenCoach log before retrying.")
             return
-        _quit_app()
+        subprocess.run(
+            ["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"],
+            capture_output=True,
+        )
+        rumps.quit_application()
 
     def _about(self, _sender):
         resp = rumps.alert(
