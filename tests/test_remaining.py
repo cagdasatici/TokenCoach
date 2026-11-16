@@ -387,7 +387,7 @@ class ChatGPTQuotaRegression(unittest.TestCase):
         from tokencoach.providers import _parse_wham_window
         self.assertEqual(_parse_wham_window({"used_percent": 12.9}, "5-hour").pct, 13)
 
-    def test_claude_missing_or_failed_still_publishes_current_chatgpt(self):
+    def test_claude_missing_or_failed_still_publishes_chatgpt_and_checks_updates(self):
         import threading
         from types import SimpleNamespace
         from unittest.mock import Mock
@@ -400,14 +400,18 @@ class ChatGPTQuotaRegression(unittest.TestCase):
                 app = SimpleNamespace(
                     config={"cookie_str": cookie}, _config_lock=threading.Lock(),
                     _auto_detected={"claude"}, _provider_data=[], _cc_stats=None,
-                    _history={}, _fetching=True, _last_data=UsageData(session=LimitRow("5-hour", 5, "")),
+                    _history={}, _fetching=True, _last_update_check=0,
+                    _last_data=UsageData(session=LimitRow("5-hour", 5, "")),
                     _post_title=Mock(), _post_data=Mock(), _check_provider_warnings=Mock())
                 app._fetch_providers = Mock(side_effect=lambda: setattr(app, "_provider_data", [current]))
                 with patch("tokencoach.ui.fetch_raw", side_effect=RuntimeError("offline")), \
                      patch("tokencoach.ui._write_widget_cache") as write, \
+                     patch("tokencoach.ui.save_config"), \
+                     patch("tokencoach.ui._check_and_apply_update", return_value=False) as update, \
                      patch("tokencoach.ui.log"):
                     TokenCoachApp._fetch_and_update(app)
                 app._fetch_providers.assert_called_once()
+                update.assert_called_once_with()
                 self.assertFalse(app._fetching)
                 self.assertIsNone(app._post_data.call_args.args[0].session)
                 self.assertEqual(write.call_args.args[1], [current])

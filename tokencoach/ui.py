@@ -2889,15 +2889,6 @@ class TokenCoachApp(rumps.App):
                                 windows=health.windows_from(data, self._provider_data, self._history))
 
             published = True
-
-            # -- silent auto-update --
-            if time.time() - self._last_update_check > UPDATE_CHECK_INTERVAL:
-                self._last_update_check = time.time()
-                with self._config_lock:
-                    self.config["last_update_check"] = self._last_update_check
-                    save_config(self.config)
-                if _check_and_apply_update():
-                    _restart_app()
         except CurlHTTPError as e:
             resp = getattr(e, "response", None)
             code = getattr(resp, "status_code", 0) or 0
@@ -2946,6 +2937,17 @@ class TokenCoachApp(rumps.App):
                     _write_widget_cache(
                         unavailable, self._provider_data, self._cc_stats, self.config,
                         windows=health.windows_from(unavailable, self._provider_data, self._history))
+                # Check for updates even when Claude quota is unavailable.
+                if time.time() - self._last_update_check > UPDATE_CHECK_INTERVAL:
+                    self._last_update_check = time.time()
+                    try:
+                        with self._config_lock:
+                            self.config["last_update_check"] = self._last_update_check
+                            save_config(self.config)
+                        if _check_and_apply_update():
+                            _restart_app()
+                    except Exception:
+                        log.exception("Auto-update failed")
             finally:
                 self._fetching = False
         if retry_now:

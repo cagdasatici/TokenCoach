@@ -152,7 +152,7 @@ def _org_id_from_api(cookies: dict) -> str | None:
                     data.get("organization_id"),
                     data.get("org_id"),
                     org((data.get("organizations") or [{}])[0]),
-                    org((data.get("account", {}).get("memberships") or [{}])[0]
+                    org(((data.get("account") or {}).get("memberships") or [{}])[0]
                         .get("organization")),
                 ):
                     if candidate:
